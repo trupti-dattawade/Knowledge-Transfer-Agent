@@ -1,0 +1,36 @@
+# ==============================
+# LLM + Agent Framework
+# ==============================
+langchain
+langchain-core
+langchain-community
+langchain-groq
+
+# ==============================
+# FastAPI Backend
+# ==============================
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+
+# ==============================
+# Environment & Utilities
+# ==============================
+python-dotenv
+requests
+tenacity
+python-dateutil
+
+# ==============================
+# Microsoft 365 Integration
+# Email + OneDrive + Calendar
+# ==============================
+msal
+office365-rest-python-client
+
+# ==============================
+# Future RAG / Knowledge Base
+# ==============================
+faiss-cpu
+tiktoken

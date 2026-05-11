@@ -1,0 +1,85 @@
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.pyo
+*.pdb
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# -----------------------------
+# Environment variables / secrets
+# -----------------------------
+.env
+.env.*
+*.env
+
+# API keys / credentials
+secrets.json
+credentials.json
+token.json
+
+# -----------------------------
+# FastAPI / Logs / Runtime files
+# -----------------------------
+*.log
+logs/
+*.sqlite3
+*.db
+
+# -----------------------------
+# Build / packaging
+# -----------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# -----------------------------
+# VS Code / IDE
+# -----------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -----------------------------
+# Mac / Windows junk files
+# -----------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -----------------------------
+# Jupyter / notebooks
+# -----------------------------
+.ipynb_checkpoints/
+
+# -----------------------------
+# Test / coverage
+# -----------------------------
+.coverage
+htmlcov/
+.pytest_cache/
+
+# -----------------------------
+# Uploaded files (KT project)
+# -----------------------------
+uploads/
+employee_files/
+generated_docs/
+
+# -----------------------------
+# Temporary files
+# -----------------------------
+tmp/
+temp/
