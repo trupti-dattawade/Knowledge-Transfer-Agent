@@ -132,3 +132,7 @@ Zero knowledge loss
 Consistent documentation
 Reduced HR workload
 Smooth employee offboarding
+
+## License
+This project is proprietary and confidential.
+Unauthorized copying, use, or distribution is strictly prohibited.
