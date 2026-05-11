@@ -1,138 +1,223 @@
-# Knowledge Transfer Agent 
+# 🧠 Knowledge Transfer Agent
 
-Overview
+---
 
-The Knowledge Transfer Agent is an agentic AI system that automates the entire knowledge handover process when an employee resigns.
-It ensures critical knowledge is captured, documented, reviewed, and stored without manual HR follow-ups.
+## 📌 Overview
 
-The system orchestrates HR, Employee, Manager, Email, Google Forms, Interview AI, and OneDrive into a single automated workflow.
+The **Knowledge Transfer Agent** is an agentic AI system that automates the entire knowledge handover process when an employee resigns.  
 
-Problem
+It ensures critical knowledge is:
+- 🗂️ Captured  
+- 📝 Documented  
+- ✅ Reviewed  
+- ☁️ Stored  
 
-When employees leave, organizations lose:
+…without manual HR follow-ups.
 
-Tribal knowledge
-Project context
-Process documentation
-Access to important files
+The system orchestrates:
+- 🧑‍💼 HR  
+- 👨‍💻 Employee  
+- 👩‍💼 Manager  
+- 📧 Email system  
+- 📄 Google Forms  
+- 🤖 AI Interview Agent  
+- ☁️ OneDrive / Teams  
 
-Traditional knowledge transfer is manual, inconsistent, and often incomplete.
+into a single automated workflow.
 
-This system eliminates knowledge loss using AI-driven automation.
+---
 
-End-to-End Workflow
-1. HR Resignation Intake
+## 🚨 Problem
+
+### When employees leave, organizations lose:
+
+- 🧠 Tribal knowledge  
+- 📊 Project context  
+- 🧾 Process documentation  
+- 🔐 Access knowledge & system understanding  
+
+---
+
+### ❌ Traditional Issue
+
+- Manual process  
+- Inconsistent documentation  
+- High dependency on individuals  
+- Knowledge gaps after exit  
+
+---
+
+### 💡 Solution
+
+This system eliminates knowledge loss using:
+🤖 **AI-driven automation across the entire KT lifecycle**
+
+---
+
+# 🔁 End-to-End Workflow
+
+---
+
+## 1️⃣ 🧾 HR Resignation Intake
 
 HR registers a resignation inside the system.
 
-System Actions
+### ⚙️ System Actions:
+- 🧠 Create KT workflow instance  
+- 📢 Trigger automated notifications  
 
-Create KT workflow instance
-Trigger automated notifications
-2. Email Notifications Sent
+---
+
+## 2️⃣ 📧 Email Notifications Sent
 
 Emails are automatically sent to:
 
-Employee
-HR
-Employee’s Manager / Documentation Reviewer
+- 👨‍💼 Employee  
+- 🧑‍💼 HR  
+- 👩‍💼 Manager / Documentation Reviewer  
 
-Email contains
+### 📩 Email contains:
+- 📄 Google Form link (for uploads)  
+- 📅 Interview scheduling link  
 
-Google Form link for document upload
-Interview scheduling link
-3. Employee Upload via Google Form
+---
+
+## 3️⃣ 📄 Employee Upload via Google Form
 
 Employee uploads:
 
-Documents
-Files
-Credentials/process info
-Project references
+- 📁 Documents  
+- 📂 Files  
+- 🧾 Credentials / process info  
+- 📊 Project references  
 
-System Actions
+### ⚙️ System Actions:
+- ☁️ Create OneDrive folder automatically  
+- ⬆️ Upload all submitted files  
 
-Automatically create OneDrive folder
-Upload submitted files to the folder
-4. AI Knowledge Transfer Interview
+---
 
-AI schedules and conducts a KT interview via chat.
+## 4️⃣ 🤖 AI Knowledge Transfer Interview
 
-Agent extracts
+AI schedules and conducts KT interview via chat.
 
-Role responsibilities
-Daily workflows
-Tools & systems used
-Project insights
-Hidden tribal knowledge
-5. Documentation Generator Agent
+### 🧠 Agent extracts:
 
-AI converts interview + uploaded data into:
+- 👨‍💻 Role responsibilities  
+- 🔁 Daily workflows  
+- 🛠️ Tools & systems used  
+- 📊 Project insights  
+- 🧩 Hidden tribal knowledge  
 
-Professional KT documentation
-Structured knowledge base content
-Handover task checklist
+---
 
-Documentation is saved automatically to OneDrive.
+## 5️⃣ 📝 Documentation Generator Agent
 
-6. Manager Review Stage
+AI converts all inputs into:
+
+- 📘 Professional KT documentation  
+- 🗂️ Structured knowledge base content  
+- 📋 Handover task checklist  
+
+### ☁️ Storage:
+- Automatically saved to **OneDrive (Teams)**
+
+---
+
+## 6️⃣ 👩‍💼 Manager Review Stage
 
 Manager receives email notification with OneDrive link.
 
-Manager reviews and approves documentation.
+### ⚙️ Actions:
+- 🔍 Review documentation  
+- ✅ Approve or request changes  
 
-7. Final Confirmation Emails
+---
+
+## 7️⃣ 📧 Final Confirmation Emails
 
 After approval:
 
-Employee receives confirmation
-HR receives confirmation
-Manager receives confirmation
-8. Workflow Completion
+- 👨‍💻 Employee receives confirmation  
+- 🧑‍💼 HR receives confirmation  
+- 👩‍💼 Manager receives confirmation  
+
+---
+
+## 8️⃣ 🎯 Workflow Completion
 
 System updates HR dashboard:
 
-Status:
-Employee KT has been successfully completed
+### 🟢 Status:
+**Employee KT has been successfully completed**
 
-System Architecture (High Level)
-Interfaces
-HR Dashboard
-Employee Email + Google Form
-Manager Review Email
-AI Agents
-Orchestrator Agent
-Interview Agent
-Documentation Generator Agent
-Email Automation Agent
-File Management Agent
-Integrations
-Google Forms (Data Collection)
-Email Service (Notifications)
-Calendar (Interview Scheduling)
-OneDrive / Teams (Storage)
-Key Features
-Fully automated KT lifecycle
-AI-driven interview and documentation
-Centralized knowledge storage
-Manager approval workflow
-Real-time HR status tracking
-Tech Stack (Planned)
-Python
-LangChain (Agent Framework)
-Groq API (LLM)
-FastAPI (Backend)
-Google Forms API
-Microsoft Graph API (OneDrive & Email)
-Outcome
+---
+
+# 🏗️ System Architecture (High Level)
+
+---
+
+## 🖥️ Interfaces
+
+- 🧑‍💼 HR Dashboard  
+- 📄 Employee Email + Google Form  
+- 👩‍💼 Manager Review Email  
+
+---
+
+## 🤖 AI Agents
+
+- 🧠 Orchestrator Agent  
+- 🎤 Interview Agent  
+- 📝 Documentation Generator Agent  
+- 📧 Email Automation Agent  
+- 📁 File Management Agent  
+
+---
+
+## 🔌 Integrations
+
+- 📄 Google Forms (Data Collection)  
+- 📧 Microsoft Graph Email API  
+- 📅 Calendar (Interview Scheduling)  
+- ☁️ OneDrive / Teams (Storage)  
+
+---
+
+# 🚀 Key Features
+
+- 🤖 Fully automated KT lifecycle  
+- 🧠 AI-driven interviews  
+- 📝 Auto documentation generation  
+- ☁️ Centralized knowledge storage  
+- 👩‍💼 Manager approval workflow  
+- 📊 Real-time HR tracking  
+
+---
+
+# 🛠️ Tech Stack (Planned)
+
+- 🐍 Python  
+- 🧠 LangChain (Agent Framework)  
+- ⚡ Groq API (LLM)  
+- 🚀 FastAPI (Backend)  
+- 📄 Google Forms API  
+- 🔗 Microsoft Graph API (Email + OneDrive)  
+
+---
+
+# 🎯 Outcome
 
 This system ensures:
 
-Zero knowledge loss
-Consistent documentation
-Reduced HR workload
-Smooth employee offboarding
+- 🧠 Zero knowledge loss  
+- 📚 Consistent documentation  
+- ⏱️ Reduced HR workload  
+- 🔄 Smooth employee offboarding  
 
-## License
-This project is proprietary and confidential.
+---
+
+# 📜 License
+
+🚫 This project is **proprietary and confidential**.  
 Unauthorized copying, use, or distribution is strictly prohibited.
