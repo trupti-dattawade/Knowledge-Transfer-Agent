@@ -53,6 +53,8 @@ class NotificationMessage(BaseModel):
     recipient: EmailStr
     subject: str
     body: str
+    html_body: Optional[str] = None
+    attachments: list[str] = Field(default_factory=list)
     category: Literal[
         "resignation_registered",
         "submission_received",
@@ -97,6 +99,7 @@ class InterviewScheduleRequest(BaseModel):
     interview_datetime: datetime
     duration_minutes: int = Field(default=60, ge=15, le=180)
     meeting_link: Optional[str] = Field(default=None, max_length=500)
+    interview_link: Optional[str] = Field(default=None, max_length=500)
 
 
 class InterviewQuestionAnswer(BaseModel):
@@ -166,6 +169,7 @@ class InterviewSchedule(BaseModel):
     interview_datetime: datetime
     duration_minutes: int
     meeting_link: Optional[str] = None
+    interview_link: Optional[str] = None
     scheduled_by: EmailStr
 
 

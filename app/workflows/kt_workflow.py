@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app.agents.orchestrator import WorkflowOrchestrator
 from app.models.schemas import (
@@ -143,6 +143,45 @@ def get_documentation(case_id: str) -> FileResponse:
 def review_documentation(case_id: str, payload: ReviewDecisionRequest) -> OperationResponse:
     case_record = _safe_execute(lambda: orchestrator.review_documentation(case_id, payload))
     return _operation_response("Review decision recorded successfully.", case_record)
+
+
+@router.get("/cases/{case_id}/review/action", response_class=HTMLResponse)
+def review_documentation_action(
+    case_id: str,
+    decision: str = Query(...),
+    reviewer_email: str = Query(...),
+    reviewer_name: str = Query(...),
+    comments: str = Query(...),
+) -> HTMLResponse:
+    payload = ReviewDecisionRequest(
+        reviewer_email=reviewer_email,
+        reviewer_name=reviewer_name,
+        decision=decision,
+        comments=comments,
+    )
+    case_record = _safe_execute(lambda: orchestrator.review_documentation(case_id, payload))
+    result = "approved" if payload.decision == "approved" else "rejected"
+    next_action = case_record.workflow.next_action
+    return HTMLResponse(
+        content=f"""
+        <html>
+          <head>
+            <title>KT Review Decision</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          </head>
+          <body style="font-family: Arial, sans-serif; background: #f4f7fb; color: #10233F; padding: 32px;">
+            <div style="max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 24px; padding: 32px; box-shadow: 0 18px 48px rgba(16,35,63,0.08);">
+              <p style="color: #1F6FEB; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Knowledge Transfer Review</p>
+              <h1 style="margin: 8px 0 16px;">The KT report was {result} successfully.</h1>
+              <p><strong>Case ID:</strong> {case_record.workflow.case_id}</p>
+              <p><strong>Current stage:</strong> {case_record.workflow.stage}</p>
+              <p><strong>Next action:</strong> {next_action}</p>
+              <p style="margin-top: 24px;"><a href="/" style="display: inline-block; padding: 12px 18px; background: #1F6FEB; color: #ffffff; text-decoration: none; border-radius: 999px; font-weight: 700;">Open Dashboard</a></p>
+            </div>
+          </body>
+        </html>
+        """
+    )
 
 
 @router.post("/cases/{case_id}/complete", response_model=OperationResponse)

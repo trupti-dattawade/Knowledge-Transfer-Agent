@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import smtplib
 from email.message import EmailMessage
 from pathlib import Path
@@ -25,6 +26,20 @@ class EmailService:
         email["From"] = f"{settings.smtp_sender_name} <{settings.smtp_sender_email}>"
         email["To"] = str(message.recipient)
         email.set_content(message.body)
+        if message.html_body:
+            email.add_alternative(message.html_body, subtype="html")
+        for attachment in message.attachments:
+            attachment_path = Path(attachment)
+            if not attachment_path.exists():
+                continue
+            mime_type, _ = mimetypes.guess_type(attachment_path.name)
+            maintype, subtype = (mime_type or "application/octet-stream").split("/", 1)
+            email.add_attachment(
+                attachment_path.read_bytes(),
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment_path.name,
+            )
 
         if settings.smtp_use_ssl:
             with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server: # type: ignore

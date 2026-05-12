@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
+from urllib.parse import quote_plus
 
 from app.agents.doc_generator import DocumentationAgent
 from app.agents.email_agent import EmailAgent
 from app.agents.file_agent import FileManagementAgent
 from app.agents.interview_agent import InterviewAgent
 from app.agents.trigger_agent import TriggerAgent
+from app.config import settings
 from app.models.constants import STAGE_TO_STATUS
 from app.models.schemas import (
     CompleteWorkflowRequest,
@@ -55,7 +57,6 @@ class WorkflowOrchestrator:
             return case_record
         form_link = self.file_agent.create_form_link(case_id)
         company_name = "James and James brother technologies pvt ltd"
-        # Official employee template (variables mapped from stored case data)
         employee_body = (
             "Dear "
             f"{case_record.employee.employee_name},\n"
@@ -110,7 +111,6 @@ class WorkflowOrchestrator:
                 employee_body,
                 "resignation_registered",
             ),
-
             (
                 str(case_record.employee.hr_contact_email),
                 "Resignation intake recorded",
@@ -165,23 +165,26 @@ class WorkflowOrchestrator:
             interview_datetime=payload.interview_datetime,
             duration_minutes=payload.duration_minutes,
             meeting_link=meeting_link,
+            interview_link=payload.interview_link,
             scheduled_by=payload.scheduled_by,
         )
+        interview_link_text = payload.interview_link or "Not provided"
         sent = self.email_agent.send_case_notifications(
             case_record,
             [
                 (
                     str(case_record.employee.employee_email),
-                    f"Knowledge Transfer (KT) Interview Scheduled — {case_record.employee.employee_name}",
+                    f"Knowledge Transfer (KT) Interview Scheduled - {case_record.employee.employee_name}",
                     (
                         f"Hello {case_record.employee.employee_name},\n\n"
                         "This is scheduled for "
                         f"{payload.interview_datetime.isoformat()} "
                         "Please review the details below and join on time.\n\n"
                         "Your Knowledge Transfer (KT) interview has been scheduled for "
-                        f"{payload.interview_datetime.isoformat()} " 
+                        f"{payload.interview_datetime.isoformat()} "
                         f"for {payload.duration_minutes} minutes.\n\n"
-                        f"Join Zoom meeting: {meeting_link}\n\n"
+                        f"Meeting link: {meeting_link}\n"
+                        f"Interview link: {interview_link_text}\n\n"
                         "Agenda (recommended topics):\n"
                         "- Your responsibilities and current ownership\n"
                         "- Key workflows and day-to-day processes\n"
@@ -199,7 +202,8 @@ class WorkflowOrchestrator:
                     (
                         f"The KT interview for {case_record.employee.employee_name} has been scheduled.\n\n"
                         f"Interview time: {payload.interview_datetime.isoformat()}\n"
-                        f"Join Zoom meeting: {meeting_link}"
+                        f"Meeting link: {meeting_link}\n"
+                        f"Interview link: {interview_link_text}"
                     ),
                     "interview_scheduled",
                 ),
@@ -209,10 +213,11 @@ class WorkflowOrchestrator:
                     (
                         f"The KT interview for {case_record.employee.employee_name} has been scheduled.\n\n"
                         f"Interview time: {payload.interview_datetime.isoformat()}\n"
-                        f"Join Zoom meeting: {meeting_link}"
+                        f"Meeting link: {meeting_link}\n"
+                        f"Interview link: {interview_link_text}"
                     ),
                     "interview_scheduled",
-                )
+                ),
             ],
         )
         updated = self._update_case(
@@ -235,7 +240,7 @@ class WorkflowOrchestrator:
         updated = self._update_case(
             case_record,
             stage="interview_completed",
-            next_action="Generate KT documentation from submitted material and interview knowledge.",
+            next_action="Generate the KT review PDF from submitted material and interview knowledge.",
             interview=interview_record,
             audit_entry=self._audit(
                 "interview_completed",
@@ -243,7 +248,7 @@ class WorkflowOrchestrator:
                 "Interview completed and structured knowledge captured.",
             ),
         )
-        return updated
+        return self._generate_documentation_and_notify(updated, payload.interviewer)
 
     def start_live_interview(
         self,
@@ -282,17 +287,26 @@ class WorkflowOrchestrator:
 
         if session.status == "completed":
             record = self.interview_agent.session_to_record("AI Interview Agent", session)
-            updates["interview"] = record
-            stage = "interview_completed"
-            next_action = "Generate KT documentation from the completed live interview."
-            audit_details = "Live interview completed and structured knowledge captured."
+            completed_case = self._update_case(
+                case_record,
+                stage="interview_completed",
+                next_action="Generate the KT review PDF from the completed live interview.",
+                audit_entry=self._audit(
+                    "live_interview_completed",
+                    f"Employee:{case_record.employee.employee_email}",
+                    "Live interview completed and structured knowledge captured.",
+                ),
+                interview_session=session,
+                interview=record,
+            )
+            return self._generate_documentation_and_notify(completed_case, "AI Meeting Agent")
 
         updated = self._update_case(
             case_record,
             stage=stage,
             next_action=next_action,
             audit_entry=self._audit(
-                "live_interview_progressed" if session.status != "completed" else "live_interview_completed",
+                "live_interview_progressed",
                 f"Employee:{case_record.employee.employee_email}",
                 audit_details,
             ),
@@ -312,39 +326,92 @@ class WorkflowOrchestrator:
         payload: GenerateDocumentationRequest,
     ) -> KTCaseRecord:
         case_record = self.case_store.get_case(case_id)
-        documentation = self.documentation_agent.generate(case_record, payload)
-        sent = self.email_agent.send_case_notifications(
+        return self._generate_documentation_and_notify(case_record, payload.generated_by)
+
+    def _generate_documentation_and_notify(
+        self,
+        case_record: KTCaseRecord,
+        generated_by: str,
+    ) -> KTCaseRecord:
+        case_id = case_record.workflow.case_id
+        documentation = self.documentation_agent.generate(
+            case_record,
+            GenerateDocumentationRequest(generated_by=generated_by),
+        )
+        approval_link = self._build_review_action_link(
+            case_id=case_id,
+            reviewer_email=str(case_record.employee.manager_email),
+            reviewer_name=case_record.employee.manager_name,
+            decision="approved",
+            comments="Approved by manager from review email.",
+        )
+        reject_link = self._build_review_action_link(
+            case_id=case_id,
+            reviewer_email=str(case_record.employee.manager_email),
+            reviewer_name=case_record.employee.manager_name,
+            decision="changes_requested",
+            comments="Rejected by manager from review email. Interview report needs revision.",
+        )
+        attachment_path = documentation.storage_path
+        sent = self.email_agent.send_rich_notifications(
             case_record,
             [
-                (
-                    str(case_record.employee.hr_contact_email),
-                    "KT documentation ready",
-                    f"Documentation for case {case_id} is ready: {documentation.share_link}",
-                    "documentation_ready",
-                ),
-                (
-                    str(case_record.employee.employee_email),
-                    "KT documentation ready",
-                    f"Documentation for your KT workflow is ready: {documentation.share_link}",
-                    "documentation_ready",
-                ),
-                (
-                    str(case_record.employee.manager_email),
-                    "KT documentation ready for review",
-                    f"Please review the KT document here: {documentation.share_link}",
-                    "documentation_ready",
-                ),
+                {
+                    "recipient": str(case_record.employee.employee_email),
+                    "subject": "KT meeting notes PDF ready",
+                    "body": (
+                        f"Hello {case_record.employee.employee_name},\n\n"
+                        "Your Knowledge Transfer meeting notes PDF has been generated successfully.\n"
+                        f"Document title: {documentation.title}\n"
+                        f"Download link: {documentation.share_link}\n\n"
+                        "The PDF is attached to this email and has also been shared with your manager for review.\n"
+                        "Once the manager approves it, the KT workflow will be completed.\n"
+                    ),
+                    "html_body": self._build_document_email_html(
+                        recipient_name=case_record.employee.employee_name,
+                        title=documentation.title,
+                        share_link=documentation.share_link,
+                    ),
+                    "attachments": [attachment_path],
+                    "category": "documentation_ready",
+                },
+                {
+                    "recipient": str(case_record.employee.manager_email),
+                    "subject": f"KT PDF review required for {case_record.employee.employee_name}",
+                    "body": (
+                        f"Hello {case_record.employee.manager_name},\n\n"
+                        f"The KT PDF for {case_record.employee.employee_name} is ready for your review.\n"
+                        f"Document title: {documentation.title}\n"
+                        f"Download link: {documentation.share_link}\n\n"
+                        f"Approve: {approval_link}\n"
+                        f"Reject: {reject_link}\n\n"
+                        "The PDF is attached to this email. Approving it will complete the KT workflow.\n"
+                    ),
+                    "html_body": self._build_manager_review_email_html(
+                        manager_name=case_record.employee.manager_name,
+                        employee_name=case_record.employee.employee_name,
+                        title=documentation.title,
+                        share_link=documentation.share_link,
+                        approval_link=approval_link,
+                        reject_link=reject_link,
+                    ),
+                    "attachments": [attachment_path],
+                    "category": "documentation_ready",
+                },
             ],
         )
         updated = self._update_case(
             case_record,
             stage="under_review",
-            next_action="Manager or reviewer should approve or request changes.",
+            next_action=(
+                "Professional KT meeting notes were converted into a PDF, phase 5 is complete, "
+                "and the review email has been sent to the employee and manager."
+            ),
             documentation=documentation,
             notifications=case_record.notifications + sent,
             audit_entry=self._audit(
                 "documentation_generated",
-                f"Generator:{payload.generated_by}",
+                f"Generator:{generated_by}",
                 "Documentation generated and review notifications sent.",
             ),
         )
@@ -352,6 +419,10 @@ class WorkflowOrchestrator:
 
     def review_documentation(self, case_id: str, payload: ReviewDecisionRequest) -> KTCaseRecord:
         case_record = self.case_store.get_case(case_id)
+        if case_record.workflow.stage == "completed":
+            return case_record
+        if case_record.workflow.stage == "changes_requested" and payload.decision == "changes_requested":
+            return case_record
         review_record = ReviewRecord(
             reviewer_email=payload.reviewer_email,
             reviewer_name=payload.reviewer_name,
@@ -359,39 +430,82 @@ class WorkflowOrchestrator:
             comments=payload.comments,
             reviewed_at=datetime.now(timezone.utc),
         )
-        stage = "completed" if payload.decision == "approved" else "changes_requested"
-        next_action = (
-            "Workflow completed. Send final confirmation emails."
-            if stage == "completed"
-            else "Employee or documentation owner should address review comments."
+        if payload.decision == "changes_requested":
+            sent = self.email_agent.send_rich_notifications(
+                case_record,
+                [
+                    {
+                        "recipient": str(case_record.employee.employee_email),
+                        "subject": "KT interview report rejected",
+                        "body": (
+                            f"Hello {case_record.employee.employee_name},\n\n"
+                            "The manager reviewed the KT PDF and rejected the report.\n"
+                            f"Comments: {payload.comments}\n\n"
+                            "Please update or recapture the interview report and generate the document again."
+                        ),
+                        "category": "changes_requested",
+                    },
+                    {
+                        "recipient": str(case_record.employee.manager_email),
+                        "subject": "KT report marked for rework",
+                        "body": (
+                            f"The KT report for {case_record.employee.employee_name} has been marked as rejected.\n"
+                            f"Comments recorded: {payload.comments}"
+                        ),
+                        "category": "changes_requested",
+                    },
+                ],
+            )
+            updated = self._update_case(
+                case_record,
+                stage="changes_requested",
+                next_action="Manager rejected the report. Re-run the interview report and generate a fresh PDF for review.",
+                review=review_record,
+                notifications=case_record.notifications + sent,
+                audit_entry=self._audit(
+                    "review_changes_requested",
+                    f"Reviewer:{payload.reviewer_email}",
+                    payload.comments,
+                ),
+            )
+            return updated
+
+        sent = self.email_agent.send_rich_notifications(
+            case_record,
+            [
+                {
+                    "recipient": str(case_record.employee.employee_email),
+                    "subject": "KT session completed successfully",
+                    "body": (
+                        f"Hello {case_record.employee.employee_name},\n\n"
+                        "Your Knowledge Transfer session has been approved and completed successfully.\n"
+                        f"Case ID: {case_id}\n"
+                        "Thank you for completing the KT process."
+                    ),
+                    "category": "workflow_completed",
+                },
+                {
+                    "recipient": str(case_record.employee.manager_email),
+                    "subject": f"KT session completed for {case_record.employee.employee_name}",
+                    "body": (
+                        f"Hello {case_record.employee.manager_name},\n\n"
+                        f"The KT session for {case_record.employee.employee_name} has been approved and completed successfully.\n"
+                        f"Case ID: {case_id}\n"
+                        "The workflow is now closed."
+                    ),
+                    "category": "workflow_completed",
+                },
+            ],
         )
-        messages = []
-        if stage == "changes_requested":
-            messages.append(
-                (
-                    str(case_record.employee.employee_email),
-                    "KT documentation changes requested",
-                    f"Reviewer comments: {payload.comments}",
-                    "changes_requested",
-                )
-            )
-            messages.append(
-                (
-                    str(case_record.employee.hr_contact_email),
-                    "KT documentation changes requested",
-                    f"Reviewer comments for case {case_id}: {payload.comments}",
-                    "changes_requested",
-                )
-            )
-        sent = self.email_agent.send_case_notifications(case_record, messages) if messages else []
         updated = self._update_case(
             case_record,
-            stage=stage,
-            next_action=next_action,
+            stage="completed",
+            next_action="No further action required.",
             review=review_record,
             notifications=case_record.notifications + sent,
+            final_confirmation_sent_at=datetime.now(timezone.utc),
             audit_entry=self._audit(
-                f"review_{payload.decision}",
+                "review_approved",
                 f"Reviewer:{payload.reviewer_email}",
                 payload.comments,
             ),
@@ -479,3 +593,62 @@ class WorkflowOrchestrator:
             actor=actor,
             details=details,
         )
+
+    def _build_review_action_link(
+        self,
+        case_id: str,
+        reviewer_email: str,
+        reviewer_name: str,
+        decision: str,
+        comments: str,
+    ) -> str:
+        return (
+            f"{settings.base_url}/api/v1/kt/cases/{case_id}/review/action"
+            f"?decision={quote_plus(decision)}"
+            f"&reviewer_email={quote_plus(reviewer_email)}"
+            f"&reviewer_name={quote_plus(reviewer_name)}"
+            f"&comments={quote_plus(comments)}"
+        )
+
+    def _build_document_email_html(
+        self,
+        recipient_name: str,
+        title: str,
+        share_link: str,
+    ) -> str:
+        return f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; color: #243B53;">
+            <p>Hello {recipient_name},</p>
+            <p>Your Knowledge Transfer meeting notes PDF has been generated successfully.</p>
+            <p><strong>Document title:</strong> {title}</p>
+            <p><a href="{share_link}">Open KT PDF</a></p>
+            <p>The PDF is attached to this email and has been shared with your manager for review.</p>
+          </body>
+        </html>
+        """
+
+    def _build_manager_review_email_html(
+        self,
+        manager_name: str,
+        employee_name: str,
+        title: str,
+        share_link: str,
+        approval_link: str,
+        reject_link: str,
+    ) -> str:
+        return f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; color: #243B53;">
+            <p>Hello {manager_name},</p>
+            <p>The KT PDF for <strong>{employee_name}</strong> is ready for your review.</p>
+            <p><strong>Document title:</strong> {title}</p>
+            <p><a href="{share_link}">Open KT PDF</a></p>
+            <p style="margin-top: 24px;">
+              <a href="{approval_link}" style="display: inline-block; padding: 12px 18px; background: #159957; color: #ffffff; text-decoration: none; border-radius: 999px; font-weight: 700; margin-right: 12px;">Approve</a>
+              <a href="{reject_link}" style="display: inline-block; padding: 12px 18px; background: #c2410c; color: #ffffff; text-decoration: none; border-radius: 999px; font-weight: 700;">Reject</a>
+            </p>
+            <p>The PDF is attached to this email. Approving it will complete the KT workflow.</p>
+          </body>
+        </html>
+        """

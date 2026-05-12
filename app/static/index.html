@@ -48,7 +48,7 @@
             <strong>Manual dashboard</strong>
           </div>
           <div>
-            <span class="metric-label">Interview mode</span>
+            <span class="metric-label">Workflow mode</span>
             <strong id="interviewMode">Checking</strong>
           </div>
         </div>
@@ -122,7 +122,7 @@
           </div>
           <p class="workflow-note">
             The dashboard reflects your backend state in real time. Open a case to inspect full status,
-            audit events, and generated documentation links.
+            audit events, and the professional meeting-notes PDF shared with the employee, manager, and HR.
           </p>
         </article>
 
@@ -239,41 +239,44 @@
         </article>
       </section>
 
-      <section class="panel interview-panel">
-        <div class="panel-header">
-          <div>
-            <span class="panel-label">Live Interview</span>
-            <h2>Conversational KT session</h2>
-          </div>
-        </div>
-        <div class="interview-layout">
-          <div class="interview-sidebar">
-            <p id="interviewHint" class="workflow-note">
-              Select a case, then start a live interview session. The agent will ask guided questions and follow up when answers are too thin.
-            </p>
-            <div class="interview-actions">
-              <button class="button primary" id="startInterviewBtn" type="button">Start Interview</button>
-              <button class="button subtle" id="refreshInterviewBtn" type="button">Refresh Session</button>
-              <button class="button subtle" id="manualCollectBtn" type="button">collect</button>
-            </div>
-
-            <p id="interviewStatus" class="form-status">No interview session loaded.</p>
-          </div>
-          <div class="interview-chat-shell">
-            <div id="interviewTranscript" class="interview-transcript">
-              <div class="chat-empty">The interview transcript will appear here.</div>
-            </div>
-            <form id="interviewForm" class="interview-form">
-              <textarea id="interviewAnswer" rows="4" placeholder="Type the employee response here..." required></textarea>
-              <div class="interview-form-footer">
-                <button class="button primary" type="submit">Send Response</button>
-                <span class="form-status">This sends the next employee answer to the live interview agent.</span>
-              </div>
-            </form>
-          </div>
-        </div>
-      </section>
     </main>
+  </div>
+
+  <div class="modal-backdrop is-hidden" id="scheduleModalBackdrop" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
+      <div class="panel-header modal-header">
+        <div>
+          <span class="panel-label">Interview Scheduling</span>
+          <h2 id="scheduleModalTitle">Send interview email</h2>
+        </div>
+        <button class="button subtle modal-close" id="scheduleModalClose" type="button" aria-label="Close popup">Close</button>
+      </div>
+
+      <form id="scheduleForm" class="intake-form">
+        <div class="field-grid">
+          <label>
+            <span>Meeting Link</span>
+            <input id="scheduleMeetingLink" name="meeting_link" type="url" required placeholder="https://meet.google.com/...">
+          </label>
+          <label>
+            <span>Interview Link</span>
+            <input id="scheduleInterviewLink" name="interview_link" type="url" required placeholder="https://forms.example.com/interview">
+          </label>
+          <label>
+            <span>Interview Date & Time</span>
+            <input id="scheduleDatetime" name="interview_datetime" type="datetime-local" required>
+          </label>
+          <label>
+            <span>Duration (minutes)</span>
+            <input id="scheduleDuration" name="duration_minutes" type="number" min="15" max="180" value="60" required>
+          </label>
+        </div>
+        <div class="form-footer">
+          <button class="button primary" type="submit">Send Employee Email</button>
+          <p id="scheduleFormStatus" class="form-status">Add the links, then send the interview email.</p>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

@@ -28,3 +28,24 @@ class EmailAgent:
             self.email_service.send(case_record.workflow.case_id, message)
             sent_messages.append(message)
         return sent_messages
+
+    def send_rich_notifications(
+        self,
+        case_record: KTCaseRecord,
+        notifications: list[dict[str, object]],
+    ) -> list[NotificationMessage]:
+        sent_messages: list[NotificationMessage] = []
+        now = datetime.now(timezone.utc)
+        for item in notifications:
+            message = NotificationMessage(
+                recipient=str(item["recipient"]),
+                subject=str(item["subject"]),
+                body=str(item["body"]),
+                html_body=str(item["html_body"]) if item.get("html_body") else None,
+                attachments=[str(path) for path in item.get("attachments", [])],
+                category=str(item["category"]),  # type: ignore[arg-type]
+                sent_at=now,
+            )
+            self.email_service.send(case_record.workflow.case_id, message)
+            sent_messages.append(message)
+        return sent_messages

@@ -2,6 +2,7 @@ const state = {
   dashboard: null,
   selectedCaseId: null,
   interviewSession: null,
+  scheduleCaseId: null,
 };
 
 async function fetchJson(url, options = {}) {
@@ -25,7 +26,7 @@ function updateHealth(status = "Live") {
 function updateInterviewMode() {
   const node = document.getElementById("interviewMode");
   if (!node) return;
-  node.textContent = "AI-ready when configured";
+  node.textContent = "PDF review workflow";
 }
 
 function renderMetrics(dashboard) {
@@ -97,14 +98,36 @@ function renderSpotlight(caseDetail) {
     <p><strong>Manager:</strong> ${employee.manager_name} - ${employee.manager_email}</p>
     <p><strong>HR owner:</strong> ${employee.hr_contact_name} - ${employee.hr_contact_email}</p>
     ${
-      documentation
-        ? `<p><a class="case-link" href="/api/v1/kt/cases/${workflow.case_id}/documentation" target="_blank" rel="noreferrer">Download generated KT PDF</a></p>`
+      caseDetail.case.interview_schedule
+        ? `<p><strong>Meeting link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.meeting_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.meeting_link}</a></p>`
         : ""
+    }
+    ${
+      caseDetail.case.interview_schedule?.interview_link
+        ? `<p><strong>Interview link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.interview_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.interview_link}</a></p>`
+        : ""
+    }
+    ${
+      documentation
+        ? `
+          <div class="document-summary">
+            <p><strong>Meeting notes PDF:</strong></p>
+            <p><a class="button success" href="/api/v1/kt/cases/${workflow.case_id}/documentation" target="_blank" rel="noreferrer">Download generated KT PDF</a></p>
+            <p><strong>Distribution:</strong> Shared with the employee, manager, and HR for review.</p>
+            <p><strong>Document title:</strong> ${documentation.title}</p>
+          </div>
+        `
+        : `
+          <div class="document-summary">
+            <p><strong>Sample meeting notes PDF:</strong></p>
+            <p><a class="button success" href="/static/sample_meeting_notes.pdf" target="_blank" rel="noreferrer">Open sample PDF</a></p>
+            <p><strong>Distribution:</strong> Example review copy for employee, manager, and HR.</p>
+          </div>
+        `
     }
   `;
   // Mark lifecycle pulse nodes as completed/green
-  syncWorkflowPulse(workflow);
-  resetInterviewPanel(workflow.case_id);
+  syncWorkflowPulse(workflow, Boolean(documentation));
 }
 
 // Debug helper: quickly verify backend stage/status driving the UI
@@ -164,41 +187,10 @@ function wireWorkflowPulseButtons() {
     const handler = async () => {
       if (!state.selectedCaseId) return;
       if (phase === "collect") {
-        // Phase 3 collect: submit handover inputs first.
-        console.log("[KT UI] collect phase handler triggered for case", state.selectedCaseId);
-        await manualCollect();
-
-
-        // After collect becomes green, show a popup to accept the meeting link.
-        // The backend will schedule and (in a real system) email only after user confirmation.
-        const detail = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
-
-        // Create a prospective meeting link via backend calendar endpoint.
-        // For MVP, we will reuse the schedule endpoint but we will delay email send by overriding it
-        // in backend later. For now, we prompt user and only call schedule endpoint when confirmed.
-        const proceed = window.confirm(
-          "Collect is complete. Click OK to schedule the interview meeting and send the 'interview scheduled' email with the meeting link.\n\n(If you cancel, no email will be sent.)"
-        );
-
-        if (true) {
-          const now = new Date();
-          const interviewStart = new Date(now.getTime() + 30 * 60 * 1000);
-          const payload = {
-            scheduled_by: "hr@example.com",
-            interview_datetime: interviewStart.toISOString(),
-            duration_minutes: 60,
-            meeting_link: null,
-          };
-
-          await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}/interview/schedule`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+        const completed = await manualCollect();
+        if (completed) {
+          openScheduleModal(state.selectedCaseId);
         }
-
-        const updated = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
-        syncWorkflowPulse(updated.case.workflow);
       }
     };
 
@@ -212,7 +204,51 @@ function wireWorkflowPulseButtons() {
   });
 }
 
-function syncWorkflowPulse(workflow) {
+function getScheduleNodes() {
+  return {
+    backdrop: document.getElementById("scheduleModalBackdrop"),
+    form: document.getElementById("scheduleForm"),
+    status: document.getElementById("scheduleFormStatus"),
+    meetingLink: document.getElementById("scheduleMeetingLink"),
+    interviewLink: document.getElementById("scheduleInterviewLink"),
+    interviewDatetime: document.getElementById("scheduleDatetime"),
+    duration: document.getElementById("scheduleDuration"),
+  };
+}
+
+function openScheduleModal(caseId) {
+  const nodes = getScheduleNodes();
+  if (!nodes.backdrop || !nodes.form || !nodes.status || !nodes.meetingLink || !nodes.interviewDatetime || !nodes.duration) {
+    return;
+  }
+  const now = new Date();
+  const interviewStart = new Date(now.getTime() + 30 * 60 * 1000);
+  state.scheduleCaseId = caseId;
+  nodes.backdrop.classList.remove("is-hidden");
+  nodes.backdrop.setAttribute("aria-hidden", "false");
+  nodes.status.textContent = "Add the links, then send the interview email.";
+  nodes.form.reset();
+  nodes.duration.value = "60";
+  nodes.interviewDatetime.value = toLocalDatetimeInputValue(interviewStart);
+  nodes.meetingLink.focus();
+}
+
+function closeScheduleModal() {
+  const { backdrop, status, form } = getScheduleNodes();
+  if (!backdrop || !status || !form) return;
+  state.scheduleCaseId = null;
+  backdrop.classList.add("is-hidden");
+  backdrop.setAttribute("aria-hidden", "true");
+  status.textContent = "Add the links, then send the interview email.";
+  form.reset();
+}
+
+function toLocalDatetimeInputValue(date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function syncWorkflowPulse(workflow, hasDocumentation = false) {
   const rail = document.getElementById("workflowPulse");
   if (!rail || !workflow) return;
 
@@ -248,13 +284,16 @@ function syncWorkflowPulse(workflow) {
     if (["interview_scheduled", "interview_completed"].includes(stage)) completedPhases.add("interview");
   }
 
-  if (["documentation_generated", "under_review", "changes_requested"].includes(stage)) {
+  if (
+    ["documentation_generated", "under_review", "changes_requested"].includes(stage) ||
+    status === "awaiting_review" ||
+    hasDocumentation
+  ) {
     completedPhases.add("intake");
     completedPhases.add("notify");
     completedPhases.add("collect");
     completedPhases.add("interview");
     completedPhases.add("document");
-    if (stage === "documentation_generated") completedPhases.add("document");
   }
 
   if (stage === "completed") {
@@ -288,11 +327,12 @@ function syncWorkflowPulse(workflow) {
 
 
 function renderInterviewSession(session) {
-  state.interviewSession = session;
   const transcriptNode = document.getElementById("interviewTranscript");
   const statusNode = document.getElementById("interviewStatus");
   const hintNode = document.getElementById("interviewHint");
   const answerNode = document.getElementById("interviewAnswer");
+  if (!transcriptNode || !statusNode || !hintNode || !answerNode) return;
+  state.interviewSession = session;
 
   if (!session) {
     transcriptNode.innerHTML = `<div class="chat-empty">The interview transcript will appear here.</div>`;
@@ -316,17 +356,24 @@ function renderInterviewSession(session) {
     .join("");
 
   transcriptNode.scrollTop = transcriptNode.scrollHeight;
-  statusNode.textContent = `Interview status: ${session.status}`;
-  hintNode.textContent = session.pending_question || "The live interview is complete. You can generate documentation next.";
+  statusNode.textContent =
+    session.status === "completed"
+      ? "Interview status: completed. Professional KT PDF generated and moved to review."
+      : `Interview status: ${session.status}`;
+  hintNode.textContent =
+    session.pending_question ||
+    session.next_action ||
+    "The live interview is complete. Professional KT meeting notes are ready for review.";
   answerNode.disabled = session.status === "completed";
 }
 
 function resetInterviewPanel(caseId = null) {
-  state.interviewSession = null;
   const transcriptNode = document.getElementById("interviewTranscript");
   const statusNode = document.getElementById("interviewStatus");
   const hintNode = document.getElementById("interviewHint");
   const answerNode = document.getElementById("interviewAnswer");
+  if (!transcriptNode || !statusNode || !hintNode || !answerNode) return;
+  state.interviewSession = null;
 
   transcriptNode.innerHTML = `<div class="chat-empty">The interview transcript will appear here.</div>`;
   statusNode.textContent = caseId
@@ -334,7 +381,7 @@ function resetInterviewPanel(caseId = null) {
     : "No interview session loaded.";
   hintNode.textContent = caseId
     ? "Click Start Interview to begin the live conversational session for this case."
-    : "Select a case, then start a live interview session. The agent will ask guided questions and follow up when answers are too thin.";
+    : "Select a case, then start a live interview session. The meeting agent will capture the discussion and convert it into a professional review-ready PDF.";
   answerNode.disabled = true;
 }
 
@@ -349,6 +396,7 @@ async function loadInterviewSession(caseId) {
 
 async function startInterview() {
   const statusNode = document.getElementById("interviewStatus");
+  if (!statusNode) return;
   if (!state.selectedCaseId) {
     statusNode.textContent = "Select a case first.";
     return;
@@ -376,6 +424,7 @@ async function sendInterviewResponse(event) {
   event.preventDefault();
   const answerNode = document.getElementById("interviewAnswer");
   const statusNode = document.getElementById("interviewStatus");
+  if (!answerNode || !statusNode) return;
   const answer = answerNode.value.trim();
 
   if (!state.selectedCaseId || !answer) {
@@ -401,13 +450,15 @@ async function sendInterviewResponse(event) {
 }
 
 async function collectManual(caseId) {
-  const statusNode = document.getElementById("interviewStatus");
+  const statusNode =
+    document.getElementById("scheduleFormStatus") ||
+    document.getElementById("formStatus");
   if (!caseId) {
-    statusNode.textContent = "Select a case first.";
-    return;
+    if (statusNode) statusNode.textContent = "Select a case first.";
+    return false;
   }
 
-  statusNode.textContent = "Collect (manual) in progress...";
+  if (statusNode) statusNode.textContent = "Collect (manual) in progress...";
   try {
     // Build a payload that satisfies EmployeeSubmissionRequest
     // submitted_by (employee email) + documents/systems/open_tasks/risks lists + optional notes.
@@ -430,16 +481,59 @@ async function collectManual(caseId) {
       body: JSON.stringify(payload),
     });
 
-    statusNode.textContent = "Collect completed successfully. (Stage updated)";
+    if (statusNode) statusNode.textContent = "Collect completed successfully. (Stage updated)";
     await loadDashboard();
     await loadCaseDetail(caseId, false);
+    return true;
   } catch (error) {
-    statusNode.textContent = `Collect (manual) failed: ${error.message}`;
+    if (statusNode) statusNode.textContent = `Collect (manual) failed: ${error.message}`;
+    return false;
   }
 }
 
 async function manualCollect() {
-  await collectManual(state.selectedCaseId);
+  return collectManual(state.selectedCaseId);
+}
+
+async function submitSchedule(event) {
+  event.preventDefault();
+  const { status, meetingLink, interviewLink, interviewDatetime, duration } = getScheduleNodes();
+  const caseId = state.scheduleCaseId;
+
+  if (!caseId) {
+    status.textContent = "Select a case first.";
+    return;
+  }
+
+  status.textContent = "Sending interview email...";
+  try {
+    const detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
+    const payload = {
+      scheduled_by: detail.case.employee.hr_contact_email,
+      interview_datetime: new Date(interviewDatetime.value).toISOString(),
+      duration_minutes: Number(duration.value),
+      meeting_link: meetingLink.value.trim(),
+      interview_link: interviewLink.value.trim(),
+    };
+
+    await fetchJson(`/api/v1/kt/cases/${caseId}/interview/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    closeScheduleModal();
+    await loadDashboard();
+    await loadCaseDetail(caseId, false);
+    const updated = await fetchJson(`/api/v1/kt/cases/${caseId}`);
+    syncWorkflowPulse(updated.case.workflow);
+    const workflowStatusNode = document.getElementById("formStatus");
+    if (workflowStatusNode) {
+      workflowStatusNode.textContent = "Interview scheduled and employee email sent successfully.";
+    }
+  } catch (error) {
+    status.textContent = `Could not send interview email: ${error.message}`;
+  }
 }
 
 async function createIntake(event) {
@@ -469,20 +563,15 @@ async function createIntake(event) {
 async function boot() {
   updateHealth("Live");
   updateInterviewMode();
-  resetInterviewPanel();
   document.getElementById("refreshDashboard").addEventListener("click", () => loadDashboard());
   document.getElementById("intakeForm").addEventListener("submit", createIntake);
-  document.getElementById("startInterviewBtn").addEventListener("click", startInterview);
-  document
-    .getElementById("refreshInterviewBtn")
-    .addEventListener("click", () => state.selectedCaseId && loadInterviewSession(state.selectedCaseId));
-  document.getElementById("manualCollectBtn").addEventListener("click", async () => {
-    await manualCollect();
-    const detail = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
-    syncWorkflowPulse(detail.case.workflow);
+  document.getElementById("scheduleForm")?.addEventListener("submit", submitSchedule);
+  document.getElementById("scheduleModalClose")?.addEventListener("click", closeScheduleModal);
+  document.getElementById("scheduleModalBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "scheduleModalBackdrop") {
+      closeScheduleModal();
+    }
   });
-
-  document.getElementById("interviewForm").addEventListener("submit", sendInterviewResponse);
 
   try {
     await fetchJson("/health");
