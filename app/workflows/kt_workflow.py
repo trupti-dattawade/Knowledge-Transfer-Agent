@@ -148,17 +148,12 @@ def review_documentation(case_id: str, payload: ReviewDecisionRequest) -> Operat
 @router.get("/cases/{case_id}/review/action", response_class=HTMLResponse)
 def review_documentation_action(
     case_id: str,
-    decision: str = Query(...),
-    reviewer_email: str = Query(...),
-    reviewer_name: str = Query(...),
-    comments: str = Query(...),
+    token: str = Query(...),
 ) -> HTMLResponse:
-    payload = ReviewDecisionRequest(
-        reviewer_email=reviewer_email,
-        reviewer_name=reviewer_name,
-        decision=decision,
-        comments=comments,
-    )
+    try:
+        payload = orchestrator.parse_review_action_token(case_id, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     case_record = _safe_execute(lambda: orchestrator.review_documentation(case_id, payload))
     result = "approved" if payload.decision == "approved" else "rejected"
     next_action = case_record.workflow.next_action

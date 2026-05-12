@@ -1,5 +1,8 @@
-from datetime import datetime, timezone
-from urllib.parse import quote_plus
+import base64
+import hashlib
+import hmac
+import json
+from datetime import datetime, timedelta, timezone
 
 from app.agents.doc_generator import DocumentationAgent
 from app.agents.email_agent import EmailAgent
@@ -421,8 +424,6 @@ class WorkflowOrchestrator:
         case_record = self.case_store.get_case(case_id)
         if case_record.workflow.stage == "completed":
             return case_record
-        if case_record.workflow.stage == "changes_requested" and payload.decision == "changes_requested":
-            return case_record
         review_record = ReviewRecord(
             reviewer_email=payload.reviewer_email,
             reviewer_name=payload.reviewer_name,
@@ -441,7 +442,7 @@ class WorkflowOrchestrator:
                             f"Hello {case_record.employee.employee_name},\n\n"
                             "The manager reviewed the KT PDF and rejected the report.\n"
                             f"Comments: {payload.comments}\n\n"
-                            "Please update or recapture the interview report and generate the document again."
+                            "Please attend the interview/report step again so the KT report can be recreated and sent for review."
                         ),
                         "category": "changes_requested",
                     },
@@ -458,8 +459,9 @@ class WorkflowOrchestrator:
             )
             updated = self._update_case(
                 case_record,
-                stage="changes_requested",
-                next_action="Manager rejected the report. Re-run the interview report and generate a fresh PDF for review.",
+                stage="interview_completed",
+                next_action="Manager rejected the report. Return to phase 4 interview and recreate the interview report before generating a new PDF.",
+                documentation=None,
                 review=review_record,
                 notifications=case_record.notifications + sent,
                 audit_entry=self._audit(
@@ -602,13 +604,82 @@ class WorkflowOrchestrator:
         decision: str,
         comments: str,
     ) -> str:
-        return (
-            f"{settings.base_url}/api/v1/kt/cases/{case_id}/review/action"
-            f"?decision={quote_plus(decision)}"
-            f"&reviewer_email={quote_plus(reviewer_email)}"
-            f"&reviewer_name={quote_plus(reviewer_name)}"
-            f"&comments={quote_plus(comments)}"
+        token = self._create_review_action_token(
+            case_id=case_id,
+            reviewer_email=reviewer_email,
+            reviewer_name=reviewer_name,
+            decision=decision,
+            comments=comments,
         )
+        return f"{settings.base_url}/api/v1/kt/cases/{case_id}/review/action?token={token}"
+
+    def parse_review_action_token(self, case_id: str, token: str) -> ReviewDecisionRequest:
+        payload = self._decode_review_action_token(token)
+        if payload.get("case_id") != case_id:
+            raise ValueError("Review token does not match this case.")
+        expires_at = payload.get("expires_at")
+        if not isinstance(expires_at, str):
+            raise ValueError("Review token is invalid.")
+        if datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
+            raise ValueError("Review token has expired.")
+        return ReviewDecisionRequest(
+            reviewer_email=str(payload["reviewer_email"]),
+            reviewer_name=str(payload["reviewer_name"]),
+            decision=str(payload["decision"]),
+            comments=str(payload["comments"]),
+        )
+
+    def _create_review_action_token(
+        self,
+        case_id: str,
+        reviewer_email: str,
+        reviewer_name: str,
+        decision: str,
+        comments: str,
+    ) -> str:
+        payload = {
+            "case_id": case_id,
+            "reviewer_email": reviewer_email,
+            "reviewer_name": reviewer_name,
+            "decision": decision,
+            "comments": comments,
+            "expires_at": (
+                datetime.now(timezone.utc)
+                + timedelta(seconds=settings.review_link_ttl_seconds)
+            ).isoformat(),
+        }
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        signature = hmac.new(
+            settings.review_link_secret.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+        envelope = json.dumps(
+            {
+                "payload": base64.urlsafe_b64encode(body).decode("utf-8"),
+                "signature": signature,
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return base64.urlsafe_b64encode(envelope).decode("utf-8")
+
+    def _decode_review_action_token(self, token: str) -> dict[str, object]:
+        try:
+            envelope = json.loads(
+                base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+            )
+            payload_bytes = base64.urlsafe_b64decode(str(envelope["payload"]).encode("utf-8"))
+            expected_signature = hmac.new(
+                settings.review_link_secret.encode("utf-8"),
+                payload_bytes,
+                hashlib.sha256,
+            ).hexdigest()
+            signature = str(envelope["signature"])
+            if not hmac.compare_digest(signature, expected_signature):
+                raise ValueError("Review token signature is invalid.")
+            return json.loads(payload_bytes.decode("utf-8"))
+        except Exception as exc:
+            raise ValueError("Review token is invalid.") from exc
 
     def _build_document_email_html(
         self,

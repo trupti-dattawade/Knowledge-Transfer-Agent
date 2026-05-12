@@ -30,6 +30,8 @@ class Settings(BaseModel):
     smtp_sender_name: str = os.getenv("SMTP_SENDER_NAME", "Knowledge Transfer Agent")
     smtp_use_tls: bool = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
     smtp_use_ssl: bool = os.getenv("SMTP_USE_SSL", "false").lower() == "true"
+    review_link_secret: str = os.getenv("REVIEW_LINK_SECRET", "kt-review-secret-dev")
+    review_link_ttl_seconds: int = int(os.getenv("REVIEW_LINK_TTL_SECONDS", "604800"))
     zoom_account_id: str | None = os.getenv("ZOOM_ACCOUNT_ID")
     zoom_client_id: str | None = os.getenv("ZOOM_CLIENT_ID")
     zoom_client_secret: str | None = os.getenv("ZOOM_CLIENT_SECRET")
