@@ -21,11 +21,39 @@ ENV/
 .env
 .env.*
 *.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.secret
+*.secrets
+*.key
+*.pem
+*.crt
+*.cer
+*.pfx
+*.p12
 
 # API keys / credentials
 secrets.json
 credentials.json
 token.json
+client_secret.json
+service_account.json
+oauth_token.json
+graph_token.json
+msal_token_cache.json
+auth.json
+zoom_credentials.json
+zoom_token.json
+smtp_credentials.json
+mail_credentials.json
+groq_credentials.json
+oauth.json
+oauth2.json
+*.token
+*.credentials
+*.secret.json
 
 # -----------------------------
 # FastAPI / Logs / Runtime files
@@ -77,6 +105,36 @@ htmlcov/
 uploads/
 employee_files/
 generated_docs/
+data/
+storage/
+exports/
+backups/
+private/
+raw_data/
+processed_data/
+
+# -----------------------------
+# Local databases / caches / tokens
+# -----------------------------
+*.cache
+.cache/
+session.json
+sessions/
+token_cache/
+.python-version
+.envrc
+
+# -----------------------------
+# OS / archive / private documents
+# -----------------------------
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.bak
+*.tmp
+*.temp
 
 # -----------------------------
 # Temporary files

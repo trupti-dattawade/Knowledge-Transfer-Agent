@@ -1,0 +1,220 @@
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import FileResponse
+
+from app.agents.orchestrator import WorkflowOrchestrator
+from app.models.schemas import (
+    CompleteWorkflowRequest,
+    DashboardResponse,
+    EmployeeSubmissionRequest,
+    GenerateDocumentationRequest,
+    InterviewCaptureRequest,
+    InterviewScheduleRequest,
+    LiveInterviewResponseRequest,
+    LiveInterviewStartRequest,
+    LiveInterviewStateResponse,
+    OperationResponse,
+    ResignationIntakeRequest,
+    ResignationIntakeResponse,
+    ReviewDecisionRequest,
+    WorkflowDetailResponse,
+    WorkflowSummaryResponse,
+)
+
+
+router = APIRouter(prefix="/api/v1/kt", tags=["knowledge-transfer"])
+orchestrator = WorkflowOrchestrator()
+
+
+@router.post(
+    "/resignations/intake",
+    response_model=ResignationIntakeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def resignation_intake(payload: ResignationIntakeRequest) -> ResignationIntakeResponse:
+    case_record = orchestrator.intake_resignation(payload)
+    case_record = orchestrator.send_notifications(case_record.workflow.case_id)
+    workflow = case_record.workflow
+    return ResignationIntakeResponse(
+        message="Resignation intake recorded and notifications sent successfully.",
+        case_id=workflow.case_id,
+        workflow_stage=workflow.stage,
+        workflow_status=workflow.status,
+        notification_status=workflow.notification_status,
+        next_action=workflow.next_action,
+        created_at=workflow.created_at,
+    )
+
+
+@router.post("/cases/{case_id}/notify", response_model=OperationResponse)
+def send_notifications(case_id: str) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.send_notifications(case_id))
+    return _operation_response("Notifications sent successfully.", case_record)
+
+
+@router.post("/cases/{case_id}/submission", response_model=OperationResponse)
+def submit_handover(case_id: str, payload: EmployeeSubmissionRequest) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.submit_handover(case_id, payload))
+    return _operation_response("Employee handover submission saved.", case_record)
+
+
+@router.get("/cases/{case_id}/submission-template")
+def submission_template(case_id: str) -> dict[str, object]:
+    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    return {
+        "case_id": case_id,
+        "employee": case_record.employee.employee_name,
+        "expected_fields": [
+            "documents",
+            "systems",
+            "open_tasks",
+            "risks",
+            "notes",
+        ],
+    }
+
+
+@router.post("/cases/{case_id}/interview/schedule", response_model=OperationResponse)
+def schedule_interview(case_id: str, payload: InterviewScheduleRequest) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.schedule_interview(case_id, payload))
+    return _operation_response("Interview scheduled successfully.", case_record)
+
+
+@router.post("/cases/{case_id}/interview/capture", response_model=OperationResponse)
+def capture_interview(case_id: str, payload: InterviewCaptureRequest) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.capture_interview(case_id, payload))
+    return _operation_response("Interview knowledge captured successfully.", case_record)
+
+
+@router.post("/cases/{case_id}/interview/live/start", response_model=LiveInterviewStateResponse)
+def start_live_interview(
+    case_id: str,
+    payload: LiveInterviewStartRequest,
+) -> LiveInterviewStateResponse:
+    case_record = _safe_execute(lambda: orchestrator.start_live_interview(case_id, payload))
+    session = case_record.interview_session
+    return _live_interview_response(case_record.workflow.case_id, case_record.workflow.next_action, session)
+
+
+@router.post("/cases/{case_id}/interview/live/respond", response_model=LiveInterviewStateResponse)
+def respond_live_interview(
+    case_id: str,
+    payload: LiveInterviewResponseRequest,
+) -> LiveInterviewStateResponse:
+    case_record = _safe_execute(lambda: orchestrator.respond_live_interview(case_id, payload))
+    session = case_record.interview_session
+    return _live_interview_response(case_record.workflow.case_id, case_record.workflow.next_action, session)
+
+
+@router.get("/cases/{case_id}/interview/live", response_model=LiveInterviewStateResponse)
+def get_live_interview(case_id: str) -> LiveInterviewStateResponse:
+    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    if not case_record.interview_session:
+        raise HTTPException(status_code=404, detail="Live interview session has not started yet.")
+    return _live_interview_response(
+        case_record.workflow.case_id,
+        case_record.workflow.next_action,
+        case_record.interview_session,
+    )
+
+
+@router.post("/cases/{case_id}/documentation/generate", response_model=OperationResponse)
+def generate_documentation(
+    case_id: str,
+    payload: GenerateDocumentationRequest,
+) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.generate_documentation(case_id, payload))
+    return _operation_response("Documentation generated successfully.", case_record)
+
+
+@router.get("/cases/{case_id}/documentation", response_class=FileResponse)
+def get_documentation(case_id: str) -> FileResponse:
+    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    if not case_record.documentation:
+        raise HTTPException(status_code=404, detail="Documentation has not been generated yet.")
+    path = Path(case_record.documentation.storage_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Documentation file not found.")
+    return FileResponse(path=path, media_type="application/pdf", filename=path.name)
+
+
+@router.post("/cases/{case_id}/review", response_model=OperationResponse)
+def review_documentation(case_id: str, payload: ReviewDecisionRequest) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.review_documentation(case_id, payload))
+    return _operation_response("Review decision recorded successfully.", case_record)
+
+
+@router.post("/cases/{case_id}/complete", response_model=OperationResponse)
+def complete_workflow(case_id: str, payload: CompleteWorkflowRequest) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.complete_workflow(case_id, payload))
+    return _operation_response("Workflow marked as completed.", case_record)
+
+
+@router.get("/cases/{case_id}", response_model=WorkflowDetailResponse)
+def get_case(case_id: str) -> WorkflowDetailResponse:
+    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    return WorkflowDetailResponse(case=case_record)
+
+
+@router.get("/dashboard", response_model=DashboardResponse)
+def get_dashboard(
+    stage: str | None = Query(default=None),
+    status_value: str | None = Query(default=None, alias="status"),
+) -> DashboardResponse:
+    cases = orchestrator.list_cases()
+    if stage:
+        cases = [case for case in cases if case.workflow.stage == stage]
+    if status_value:
+        cases = [case for case in cases if case.workflow.status == status_value]
+    summaries = [
+        WorkflowSummaryResponse(
+            case_id=case.workflow.case_id,
+            employee_name=case.employee.employee_name,
+            department=case.employee.department,
+            stage=case.workflow.stage,
+            status=case.workflow.status,
+            notification_status=case.workflow.notification_status,
+            next_action=case.workflow.next_action,
+            last_updated_at=case.workflow.updated_at,
+        )
+        for case in cases
+    ]
+    return DashboardResponse(
+        total_cases=len(cases),
+        completed_cases=sum(1 for case in cases if case.workflow.stage == "completed"),
+        pending_review_cases=sum(1 for case in cases if case.workflow.status == "awaiting_review"),
+        awaiting_employee_cases=sum(
+            1 for case in cases if case.workflow.status == "awaiting_employee"
+        ),
+        cases=summaries,
+    )
+
+
+def _operation_response(message: str, case_record) -> OperationResponse:
+    workflow = case_record.workflow
+    return OperationResponse(
+        message=message,
+        case_id=workflow.case_id,
+        stage=workflow.stage,
+        status=workflow.status,
+        next_action=workflow.next_action,
+    )
+
+
+def _live_interview_response(case_id: str, next_action: str, session) -> LiveInterviewStateResponse:
+    return LiveInterviewStateResponse(
+        case_id=case_id,
+        session_id=session.session_id,
+        status=session.status,
+        pending_question=session.pending_question,
+        transcript=session.transcript,
+        next_action=next_action,
+    )
+
+
+def _safe_execute(action):
+    try:
+        return action()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

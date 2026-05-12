@@ -12,6 +12,7 @@ langchain-groq
 fastapi
 uvicorn[standard]
 pydantic
+email-validator
 python-multipart
 
 # ==============================
@@ -21,6 +22,7 @@ python-dotenv
 requests
 tenacity
 python-dateutil
+reportlab
 
 # ==============================
 # Microsoft 365 Integration
