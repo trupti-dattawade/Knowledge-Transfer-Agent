@@ -88,31 +88,34 @@
             </div>
           </div>
             <div class="workflow-rail" id="workflowPulse">
-            <div class="workflow-node" data-phase="intake">
+            <!-- Clickable lifecycle buttons. They trigger the corresponding backend action for the selected case. -->
+            <div class="workflow-node" data-phase="intake" role="button" tabindex="0" aria-label="Intake">
               <span>1</span>
               <p>Intake</p>
             </div>
-            <div class="workflow-node" data-phase="notify">
+            <div class="workflow-node" data-phase="notify" role="button" tabindex="0" aria-label="Notify">
               <span>2</span>
               <p>Notify</p>
             </div>
-            <div class="workflow-node" data-phase="collect">
+            <div class="workflow-node" data-phase="collect" role="button" tabindex="0" aria-label="Collect">
               <span>3</span>
               <p>Collect</p>
+
             </div>
-            <div class="workflow-node" data-phase="interview">
+
+            <div class="workflow-node" data-phase="interview" role="button" tabindex="0" aria-label="Interview">
               <span>4</span>
               <p>Interview</p>
             </div>
-            <div class="workflow-node" data-phase="document">
+            <div class="workflow-node" data-phase="document" role="button" tabindex="0" aria-label="Document">
               <span>5</span>
               <p>Document</p>
             </div>
-            <div class="workflow-node" data-phase="approve">
+            <div class="workflow-node" data-phase="approve" role="button" tabindex="0" aria-label="Approve">
               <span>6</span>
               <p>Approve</p>
             </div>
-            <div class="workflow-node" data-phase="complete">
+            <div class="workflow-node" data-phase="complete" role="button" tabindex="0" aria-label="Complete">
               <span>7</span>
               <p>Complete</p>
             </div>
@@ -251,7 +254,9 @@
             <div class="interview-actions">
               <button class="button primary" id="startInterviewBtn" type="button">Start Interview</button>
               <button class="button subtle" id="refreshInterviewBtn" type="button">Refresh Session</button>
+              <button class="button subtle" id="manualCollectBtn" type="button">collect</button>
             </div>
+
             <p id="interviewStatus" class="form-status">No interview session loaded.</p>
           </div>
           <div class="interview-chat-shell">

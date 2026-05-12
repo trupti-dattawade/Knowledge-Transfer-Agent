@@ -54,16 +54,63 @@ class WorkflowOrchestrator:
         if case_record.workflow.notification_status == "sent":
             return case_record
         form_link = self.file_agent.create_form_link(case_id)
+        company_name = "James and James brother technologies pvt ltd"
+        # Official employee template (variables mapped from stored case data)
+        employee_body = (
+            "Dear "
+            f"{case_record.employee.employee_name},\n"
+            "\n"
+            "This email is to formally acknowledge that your resignation has been received and recorded in our system.\n"
+            "As part of the offboarding process, we are initiating the Knowledge Transfer (KT) and Handover workflow to ensure a smooth transition of your responsibilities.\n"
+            "\n"
+            "Employee Details\n"
+            "\n"
+            "Employee Name: "
+            f"{case_record.employee.employee_name}\n"
+            "\n"
+            "Employee ID: "
+            f"{case_record.employee.employee_id}\n"
+            "\n"
+            "Department / Team: "
+            f"{case_record.employee.department}\n"
+            "\n"
+            "Job Title: "
+            f"{case_record.employee.job_title}\n"
+            "\n"
+            "Manager: "
+            f"{case_record.employee.manager_name}\n"
+            "\n"
+            "Last Working Day: "
+            f"{case_record.employee.last_working_day.isoformat()}\n"
+            "\n"
+            "\n"
+            "Required Action\n"
+            "You are requested to complete the Knowledge Transfer submission by providing all relevant documentation, project details, and handover materials.\n"
+            "Please complete the KT submission form using the link below:\n"
+            "Knowledge Transfer Form:\n"
+            f"{form_link}\n"
+            "\n"
+            "Deadline\n"
+            "Kindly submit the required information and documents within {X} working days to help ensure business continuity and a seamless handover.\n"
+            "If you require any assistance during this process, please contact "
+            f"{case_record.employee.hr_contact_name} / {case_record.employee.manager_name}.\n"
+            "\n"
+            "We appreciate your cooperation and contributions to the organization, and we will continue to support you throughout the transition process.\n"
+            "\n"
+            "Sincerely,\n"
+            "HR Team / Organization Name\n"
+            f"{case_record.employee.hr_contact_email}\n"
+            f"{company_name}"
+        )
+
         notifications = [
             (
                 str(case_record.employee.employee_email),
-                "Knowledge transfer initiated",
-                (
-                    f"Your KT workflow has been started. Upload materials here: {form_link}. "
-                    "You will also receive an interview schedule."
-                ),
+                "Resignation Acknowledgement & Knowledge Transfer Initiation",
+                employee_body,
                 "resignation_registered",
             ),
+
             (
                 str(case_record.employee.hr_contact_email),
                 "Resignation intake recorded",

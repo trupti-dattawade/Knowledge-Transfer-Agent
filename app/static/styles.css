@@ -358,6 +358,9 @@ body {
 }
 
 /* Lifecycle pulse green tick */
+.workflow-node[role="button"]{cursor:pointer; transition: transform 160ms ease, box-shadow 160ms ease;}
+.workflow-node[role="button"]:hover{transform: translateY(-1px); box-shadow: var(--shadow-md);} 
+.workflow-node[role="button"]:focus{outline: none; box-shadow: 0 0 0 4px rgba(31,111,235,0.18);} 
 .workflow-node.phase-complete {
   border-color: rgba(15, 118, 110, 0.22);
   background: rgba(15, 118, 110, 0.10);

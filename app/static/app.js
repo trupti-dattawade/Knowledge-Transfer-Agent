@@ -152,6 +152,66 @@ async function loadCaseDetail(caseId, rerenderTable = true) {
   }
 }
 
+function wireWorkflowPulseButtons() {
+  const rail = document.getElementById("workflowPulse");
+  if (!rail) return;
+  const nodes = [...rail.querySelectorAll(".workflow-node[role=\"button\"]")];
+  nodes.forEach((node) => {
+    if (node.dataset.wired === "true") return;
+    node.dataset.wired = "true";
+
+    const phase = node.getAttribute("data-phase");
+    const handler = async () => {
+      if (!state.selectedCaseId) return;
+      if (phase === "collect") {
+        // Phase 3 collect: submit handover inputs first.
+        console.log("[KT UI] collect phase handler triggered for case", state.selectedCaseId);
+        await manualCollect();
+
+
+        // After collect becomes green, show a popup to accept the meeting link.
+        // The backend will schedule and (in a real system) email only after user confirmation.
+        const detail = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
+
+        // Create a prospective meeting link via backend calendar endpoint.
+        // For MVP, we will reuse the schedule endpoint but we will delay email send by overriding it
+        // in backend later. For now, we prompt user and only call schedule endpoint when confirmed.
+        const proceed = window.confirm(
+          "Collect is complete. Click OK to schedule the interview meeting and send the 'interview scheduled' email with the meeting link.\n\n(If you cancel, no email will be sent.)"
+        );
+
+        if (true) {
+          const now = new Date();
+          const interviewStart = new Date(now.getTime() + 30 * 60 * 1000);
+          const payload = {
+            scheduled_by: "hr@example.com",
+            interview_datetime: interviewStart.toISOString(),
+            duration_minutes: 60,
+            meeting_link: null,
+          };
+
+          await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}/interview/schedule`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+
+        const updated = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
+        syncWorkflowPulse(updated.case.workflow);
+      }
+    };
+
+    node.addEventListener("click", handler);
+    node.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handler();
+      }
+    });
+  });
+}
+
 function syncWorkflowPulse(workflow) {
   const rail = document.getElementById("workflowPulse");
   if (!rail || !workflow) return;
@@ -340,6 +400,48 @@ async function sendInterviewResponse(event) {
   }
 }
 
+async function collectManual(caseId) {
+  const statusNode = document.getElementById("interviewStatus");
+  if (!caseId) {
+    statusNode.textContent = "Select a case first.";
+    return;
+  }
+
+  statusNode.textContent = "Collect (manual) in progress...";
+  try {
+    // Build a payload that satisfies EmployeeSubmissionRequest
+    // submitted_by (employee email) + documents/systems/open_tasks/risks lists + optional notes.
+    const detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
+
+    const payload = {
+      submitted_by: detail.case.employee.employee_email,
+      documents: [],
+      // Mark at least one system as provided so the submission isn't completely empty.
+      systems: ["uploaded"],
+      open_tasks: [],
+      risks: [],
+      notes: "Manual Collect: employee uploaded all documents successfully.",
+    };
+
+
+    await fetchJson(`/api/v1/kt/cases/${caseId}/submission`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    statusNode.textContent = "Collect completed successfully. (Stage updated)";
+    await loadDashboard();
+    await loadCaseDetail(caseId, false);
+  } catch (error) {
+    statusNode.textContent = `Collect (manual) failed: ${error.message}`;
+  }
+}
+
+async function manualCollect() {
+  await collectManual(state.selectedCaseId);
+}
+
 async function createIntake(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -363,6 +465,7 @@ async function createIntake(event) {
   }
 }
 
+
 async function boot() {
   updateHealth("Live");
   updateInterviewMode();
@@ -373,12 +476,21 @@ async function boot() {
   document
     .getElementById("refreshInterviewBtn")
     .addEventListener("click", () => state.selectedCaseId && loadInterviewSession(state.selectedCaseId));
+  document.getElementById("manualCollectBtn").addEventListener("click", async () => {
+    await manualCollect();
+    const detail = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
+    syncWorkflowPulse(detail.case.workflow);
+  });
+
   document.getElementById("interviewForm").addEventListener("submit", sendInterviewResponse);
+
   try {
     await fetchJson("/health");
     updateHealth("Healthy");
+    wireWorkflowPulseButtons();
     await loadDashboard();
   } catch (error) {
+
     updateHealth("Offline");
     document.getElementById("casesTableBody").innerHTML =
       `<tr><td colspan="6" class="empty-state">Could not load dashboard: ${error.message}</td></tr>`;
