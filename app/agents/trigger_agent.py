@@ -28,9 +28,9 @@ class TriggerAgent:
         case_id = self._build_case_id(payload.employee_id, now)
         workflow = WorkflowState(
             case_id=case_id,
-            stage=settings.initial_stage,
-            status=settings.initial_status,
-            notification_status=settings.notification_status,
+            stage=settings.initial_stage, # type: ignore
+            status=settings.initial_status, # type: ignore
+            notification_status=settings.notification_status, # type: ignore
             created_at=now,
             updated_at=now,
             next_action="Send notifications with form link and interview schedule.",

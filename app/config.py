@@ -9,6 +9,7 @@ load_dotenv()
 
 
 class Settings(BaseModel):
+
     app_name: str = "Knowledge Transfer Agent"
     app_version: str = "1.0.0"
     default_data_dir: Path = Path("data")
@@ -33,6 +34,10 @@ class Settings(BaseModel):
     zoom_client_id: str | None = os.getenv("ZOOM_CLIENT_ID")
     zoom_client_secret: str | None = os.getenv("ZOOM_CLIENT_SECRET")
     zoom_user_id: str = os.getenv("ZOOM_USER_ID", "me")
+
+    # Google Form used to collect KT submission materials from employees
+    google_form_view_url: str | None = os.getenv("GOOGLE_FORM_VIEW_URL")
+
 
     @property
     def docs_dir(self) -> Path:

@@ -27,17 +27,17 @@ class EmailService:
         email.set_content(message.body)
 
         if settings.smtp_use_ssl:
-            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server:
-                server.login(settings.smtp_username, settings.smtp_password)
+            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port) as server: # type: ignore
+                server.login(settings.smtp_username, settings.smtp_password) # type: ignore
                 server.send_message(email)
             return
 
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server: # type: ignore
             server.ehlo()
             if settings.smtp_use_tls:
                 server.starttls()
                 server.ehlo()
-            server.login(settings.smtp_username, settings.smtp_password)
+            server.login(settings.smtp_username, settings.smtp_password) # type: ignore
             server.send_message(email)
 
     def _write_outbox_copy(self, case_id: str, message: NotificationMessage) -> Path:

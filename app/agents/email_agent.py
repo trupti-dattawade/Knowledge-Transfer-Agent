@@ -22,7 +22,7 @@ class EmailAgent:
                 recipient=recipient,
                 subject=subject,
                 body=body,
-                category=category,
+                category=category, # type: ignore
                 sent_at=now,
             )
             self.email_service.send(case_record.workflow.case_id, message)

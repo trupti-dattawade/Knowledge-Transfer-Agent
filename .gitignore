@@ -2,6 +2,7 @@
 # Python
 # -----------------------------
 __pycache__/
+__init__.py
 *.py[cod]
 *$py.class
 *.so
@@ -35,6 +36,7 @@ ENV/
 *.p12
 
 # API keys / credentials
+config.py
 secrets.json
 credentials.json
 token.json
