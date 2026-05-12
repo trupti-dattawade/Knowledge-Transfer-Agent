@@ -3,6 +3,11 @@ const state = {
   selectedCaseId: null,
   interviewSession: null,
   scheduleCaseId: null,
+  currentView: "overview",
+  filters: {
+    stage: "",
+    status: "",
+  },
 };
 
 async function fetchJson(url, options = {}) {
@@ -29,13 +34,54 @@ function updateInterviewMode() {
   node.textContent = "PDF review workflow";
 }
 
+function setActiveView(view) {
+  state.currentView = view;
+  document.querySelectorAll(".dashboard-view").forEach((section) => {
+    section.classList.toggle("is-active", section.dataset.view === view);
+  });
+  document.querySelectorAll(".menu-link").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.viewTarget === view);
+  });
+  if (window.location.hash !== `#${view}`) {
+    history.replaceState(null, "", `#${view}`);
+  }
+}
+
+function wireViewNavigation() {
+  document.querySelectorAll("[data-view-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const view = button.dataset.viewTarget;
+      if (view) setActiveView(view);
+    });
+  });
+  window.addEventListener("hashchange", () => {
+    const next = window.location.hash.replace("#", "");
+    if (["overview", "cases", "intake"].includes(next)) {
+      setActiveView(next);
+    }
+  });
+  const initial = window.location.hash.replace("#", "");
+  if (["overview", "cases", "intake"].includes(initial)) {
+    setActiveView(initial);
+  } else {
+    setActiveView("overview");
+  }
+}
+
 function renderMetrics(dashboard) {
   document.getElementById("totalCases").textContent = dashboard.total_cases;
   document.getElementById("completedCases").textContent = dashboard.completed_cases;
   document.getElementById("pendingReviewCases").textContent = dashboard.pending_review_cases;
   document.getElementById("awaitingEmployeeCases").textContent = dashboard.awaiting_employee_cases;
   document.getElementById("casesLoaded").textContent = dashboard.cases.length;
+
+  // Overview focus cards
+  const pendingFocus = document.getElementById("pendingReviewCasesFocus");
+  const awaitingFocus = document.getElementById("awaitingEmployeeCasesFocus");
+  if (pendingFocus) pendingFocus.textContent = dashboard.pending_review_cases;
+  if (awaitingFocus) awaitingFocus.textContent = dashboard.awaiting_employee_cases;
 }
+
 
 function renderCasesTable(dashboard) {
   const tbody = document.getElementById("casesTableBody");
@@ -72,8 +118,22 @@ function renderSpotlight(caseDetail) {
   const workflow = caseDetail.case.workflow;
   const employee = caseDetail.case.employee;
   const documentation = caseDetail.case.documentation;
+  const selectedCaseBadges = [
+    document.getElementById("selectedCaseBadge"),
+    document.getElementById("selectedCaseBadgeCases"),
+  ];
+  const selectedCaseSubtexts = [
+    document.getElementById("selectedCaseSubtext"),
+    document.getElementById("selectedCaseSubtextCases"),
+  ];
 
   title.textContent = `${employee.employee_name} - ${employee.department}`;
+  selectedCaseBadges.forEach((node) => {
+    if (node) node.textContent = workflow.case_id;
+  });
+  selectedCaseSubtexts.forEach((node) => {
+    if (node) node.textContent = `${employee.employee_name} - ${workflow.stage.replaceAll("_", " ")} - ${workflow.status.replaceAll("_", " ")}`;
+  });
   body.innerHTML = `
     <div class="pill ${normalizeClassName(workflow.stage)}">${workflow.stage}</div>
     <div class="spotlight-meta">
@@ -141,7 +201,10 @@ function _debugWorkflowPulse(workflow) {
 }
 
 async function loadDashboard() {
-  const dashboard = await fetchJson("/api/v1/kt/dashboard");
+  const query = new URLSearchParams();
+  if (state.filters.stage) query.set("stage", state.filters.stage);
+  if (state.filters.status) query.set("status", state.filters.status);
+  const dashboard = await fetchJson(`/api/v1/kt/dashboard${query.toString() ? `?${query.toString()}` : ""}`);
   state.dashboard = dashboard;
 
   if (!state.selectedCaseId && dashboard.cases.length) {
@@ -163,6 +226,18 @@ async function loadDashboard() {
     document.getElementById("spotlightTitle").textContent = "Select a case";
     document.getElementById("spotlightBody").innerHTML =
       "<p>No cases yet. Create one from the intake panel.</p>";
+    [
+      document.getElementById("selectedCaseBadge"),
+      document.getElementById("selectedCaseBadgeCases"),
+    ].forEach((node) => {
+      if (node) node.textContent = "No case selected";
+    });
+    [
+      document.getElementById("selectedCaseSubtext"),
+      document.getElementById("selectedCaseSubtextCases"),
+    ].forEach((node) => {
+      if (node) node.textContent = "Pick a case from the board to run workflow actions.";
+    });
   }
 }
 
@@ -213,6 +288,14 @@ function getScheduleNodes() {
     interviewLink: document.getElementById("scheduleInterviewLink"),
     interviewDatetime: document.getElementById("scheduleDatetime"),
     duration: document.getElementById("scheduleDuration"),
+  };
+}
+
+function getActionNodes() {
+  return {
+    stageFilter: document.getElementById("stageFilter"),
+    statusFilter: document.getElementById("statusFilter"),
+    actionStatus: document.getElementById("actionStatus"),
   };
 }
 
@@ -495,6 +578,59 @@ async function manualCollect() {
   return collectManual(state.selectedCaseId);
 }
 
+async function generateDocumentationForSelectedCase() {
+  const { actionStatus } = getActionNodes();
+  if (!state.selectedCaseId) {
+    if (actionStatus) actionStatus.textContent = "Select a case first.";
+    return;
+  }
+  if (actionStatus) actionStatus.textContent = "Generating professional KT review PDF...";
+  try {
+    await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}/documentation/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ generated_by: "Dashboard Command Center" }),
+    });
+    await loadDashboard();
+    await loadCaseDetail(state.selectedCaseId, false);
+    if (actionStatus) actionStatus.textContent = "KT review PDF generated and review email sent.";
+  } catch (error) {
+    if (actionStatus) actionStatus.textContent = `Could not generate PDF: ${error.message}`;
+  }
+}
+
+async function scheduleInterviewForSelectedCase() {
+  const { actionStatus } = getActionNodes();
+  if (!state.selectedCaseId) {
+    if (actionStatus) actionStatus.textContent = "Select a case first.";
+    return;
+  }
+  openScheduleModal(state.selectedCaseId);
+  if (actionStatus) actionStatus.textContent = "Interview scheduling form opened for the selected case.";
+}
+
+async function applyFilters() {
+  const { stageFilter, statusFilter, actionStatus } = getActionNodes();
+  state.filters.stage = stageFilter?.value || "";
+  state.filters.status = statusFilter?.value || "";
+  await loadDashboard();
+  if (actionStatus) {
+    actionStatus.textContent = state.filters.stage || state.filters.status
+      ? "Case board filtered successfully."
+      : "Showing all cases.";
+  }
+}
+
+async function clearFilters() {
+  const { stageFilter, statusFilter, actionStatus } = getActionNodes();
+  state.filters.stage = "";
+  state.filters.status = "";
+  if (stageFilter) stageFilter.value = "";
+  if (statusFilter) statusFilter.value = "";
+  await loadDashboard();
+  if (actionStatus) actionStatus.textContent = "Filters cleared. Showing all cases.";
+}
+
 async function submitSchedule(event) {
   event.preventDefault();
   const { status, meetingLink, interviewLink, interviewDatetime, duration } = getScheduleNodes();
@@ -554,6 +690,7 @@ async function createIntake(event) {
     form.reset();
     state.selectedCaseId = result.case_id;
     await loadDashboard();
+    setActiveView("cases");
   } catch (error) {
     statusNode.textContent = `Could not create case: ${error.message}`;
   }
@@ -563,8 +700,26 @@ async function createIntake(event) {
 async function boot() {
   updateHealth("Live");
   updateInterviewMode();
+  wireViewNavigation();
   document.getElementById("refreshDashboard").addEventListener("click", () => loadDashboard());
   document.getElementById("intakeForm").addEventListener("submit", createIntake);
+  document.getElementById("generateDocumentBtn")?.addEventListener("click", generateDocumentationForSelectedCase);
+  document.getElementById("scheduleInterviewBtn")?.addEventListener("click", scheduleInterviewForSelectedCase);
+
+  // Overview focus cards
+  document.getElementById("focusGenerateDoc")?.addEventListener("click", async () => {
+    document.getElementById("actionStatus")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    await loadDashboard();
+    await generateDocumentationForSelectedCase();
+  });
+
+  document.getElementById("focusScheduleInterview")?.addEventListener("click", async () => {
+    await loadDashboard();
+    await scheduleInterviewForSelectedCase();
+  });
+
+  document.getElementById("applyFiltersBtn")?.addEventListener("click", applyFilters);
+  document.getElementById("clearFiltersBtn")?.addEventListener("click", clearFilters);
   document.getElementById("scheduleForm")?.addEventListener("submit", submitSchedule);
   document.getElementById("scheduleModalClose")?.addEventListener("click", closeScheduleModal);
   document.getElementById("scheduleModalBackdrop")?.addEventListener("click", (event) => {

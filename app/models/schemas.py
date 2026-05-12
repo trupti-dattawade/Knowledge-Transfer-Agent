@@ -249,6 +249,7 @@ class KTCaseRecord(BaseModel):
     interview: Optional[InterviewRecord] = None
     documentation: Optional[GeneratedDocumentation] = None
     review: Optional[ReviewRecord] = None
+    used_review_action_tokens: list[str] = Field(default_factory=list)
     final_confirmation_sent_at: Optional[datetime] = None
     audit_log: list[WorkflowAuditEntry] = Field(default_factory=list)
 

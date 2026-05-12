@@ -2,6 +2,14 @@
 
 Knowledge Transfer Agent is a FastAPI-based workflow system for employee exit handovers. It turns HR resignation intake into a structured knowledge transfer process covering notifications, employee submission, interview capture, documentation generation, reviewer approval, and final completion tracking.
 
+## Current Product Highlights
+
+- Professional PDF handover generation for each KT case
+- One-click manager approval and rejection from email
+- Automatic return to the interview phase when a report is rejected
+- Local outbox copies plus SMTP delivery when configured
+- Command-center dashboard with workflow filters and case actions
+
 ## Implemented Workflow
 
 1. HR registers a resignation and the system creates a KT case.
@@ -12,6 +20,8 @@ Knowledge Transfer Agent is a FastAPI-based workflow system for employee exit ha
 6. Documentation is generated and stored locally.
 7. Reviewer approves or requests changes.
 8. Final completion emails are generated and the case is closed.
+
+Manager review links are signed and time-bound, and each approval link is intended for one-time use.
 
 ## Architecture Mapping
 
@@ -69,6 +79,8 @@ SMTP_SENDER_EMAIL=your_sender_email@example.com
 SMTP_SENDER_NAME=Knowledge Transfer Agent
 SMTP_USE_TLS=true
 SMTP_USE_SSL=false
+REVIEW_LINK_SECRET=your_long_random_secret
+REVIEW_LINK_TTL_SECONDS=604800
 ```
 
 Notes:
@@ -76,6 +88,7 @@ Notes:
 - Use `SMTP_USE_TLS=true` for most providers on port `587`
 - Use `SMTP_USE_SSL=true` and `SMTP_USE_TLS=false` for providers that require implicit SSL, commonly on port `465`
 - If SMTP is not configured, the app falls back to local notification simulation only
+- Review links expire automatically based on `REVIEW_LINK_TTL_SECONDS`
 
 ## Zoom Interview Meeting Setup
 
@@ -122,6 +135,7 @@ Support endpoints:
 
 - `GET /api/v1/kt/cases/{case_id}`
 - `GET /api/v1/kt/cases/{case_id}/documentation`
+- `GET /api/v1/kt/cases/{case_id}/review/action?token=...`
 - `GET /api/v1/kt/dashboard`
 
 ## Sample Intake Payload

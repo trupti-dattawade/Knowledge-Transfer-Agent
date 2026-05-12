@@ -151,11 +151,30 @@ def review_documentation_action(
     token: str = Query(...),
 ) -> HTMLResponse:
     try:
-        payload = orchestrator.parse_review_action_token(case_id, token)
+        case_record = orchestrator.review_documentation_action(case_id, token)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    case_record = _safe_execute(lambda: orchestrator.review_documentation(case_id, payload))
-    result = "approved" if payload.decision == "approved" else "rejected"
+        return HTMLResponse(
+            status_code=400,
+            content=f"""
+            <html>
+              <head>
+                <title>KT Review Link</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              </head>
+              <body style="font-family: Arial, sans-serif; background: #f4f7fb; color: #10233F; padding: 32px;">
+                <div style="max-width: 720px; margin: 0 auto; background: #ffffff; border-radius: 24px; padding: 32px; box-shadow: 0 18px 48px rgba(16,35,63,0.08);">
+                  <p style="color: #c2410c; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Review Link Error</p>
+                  <h1 style="margin: 8px 0 16px;">This review link cannot be used.</h1>
+                  <p>{exc}</p>
+                  <p>Please contact HR if you need a fresh approval email.</p>
+                  <p style="margin-top: 24px;"><a href="/" style="display: inline-block; padding: 12px 18px; background: #1F6FEB; color: #ffffff; text-decoration: none; border-radius: 999px; font-weight: 700;">Open Dashboard</a></p>
+                </div>
+              </body>
+            </html>
+            """,
+        )
+    payload = case_record.review
+    result = "approved" if payload and payload.decision == "approved" else "rejected"
     next_action = case_record.workflow.next_action
     return HTMLResponse(
         content=f"""

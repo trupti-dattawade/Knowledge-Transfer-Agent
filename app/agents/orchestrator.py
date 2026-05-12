@@ -514,6 +514,24 @@ class WorkflowOrchestrator:
         )
         return updated
 
+    def review_documentation_action(self, case_id: str, token: str) -> KTCaseRecord:
+        payload = self.parse_review_action_token(case_id, token)
+        case_record = self.review_documentation(case_id, payload)
+        token_hash = self._hash_review_action_token(token)
+        if token_hash not in case_record.used_review_action_tokens:
+            case_record = self._update_case(
+                case_record,
+                stage=case_record.workflow.stage,
+                next_action=case_record.workflow.next_action,
+                used_review_action_tokens=case_record.used_review_action_tokens + [token_hash],
+                audit_entry=self._audit(
+                    "review_action_link_used",
+                    f"Reviewer:{payload.reviewer_email}",
+                    f"One-click review link consumed with decision {payload.decision}.",
+                ),
+            )
+        return case_record
+
     def complete_workflow(self, case_id: str, payload: CompleteWorkflowRequest) -> KTCaseRecord:
         case_record = self.case_store.get_case(case_id)
         sent = self.email_agent.send_case_notifications(
@@ -615,6 +633,10 @@ class WorkflowOrchestrator:
 
     def parse_review_action_token(self, case_id: str, token: str) -> ReviewDecisionRequest:
         payload = self._decode_review_action_token(token)
+        case_record = self.case_store.get_case(case_id)
+        token_hash = self._hash_review_action_token(token)
+        if token_hash in case_record.used_review_action_tokens:
+            raise ValueError("Review link has already been used.")
         if payload.get("case_id") != case_id:
             raise ValueError("Review token does not match this case.")
         expires_at = payload.get("expires_at")
@@ -680,6 +702,9 @@ class WorkflowOrchestrator:
             return json.loads(payload_bytes.decode("utf-8"))
         except Exception as exc:
             raise ValueError("Review token is invalid.") from exc
+
+    def _hash_review_action_token(self, token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     def _build_document_email_html(
         self,

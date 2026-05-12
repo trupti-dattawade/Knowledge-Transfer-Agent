@@ -15,230 +15,387 @@
     <div class="background-orbit orbit-b"></div>
     <div class="background-grid"></div>
 
-    <header class="hero">
-      <div class="hero-copy">
-        <div class="eyebrow">Knowledge Transfer Agent</div>
-        <h1>Exit handovers, turned into a control room.</h1>
-        <p>
-          Track resignation cases, launch new intake requests, and monitor handover health
-          from a single dashboard that sits directly on top of your FastAPI workflow engine.
-        </p>
-        <div class="hero-actions">
-          <a class="button primary" href="#intake-panel">Create New Intake</a>
-          <a class="button ghost" href="/docs" target="_blank" rel="noreferrer">Open API Docs</a>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="brand-mark">KT</div>
+        <div>
+          <div class="eyebrow">Knowledge Transfer Agent</div>
+          <strong>Operational Command Deck</strong>
         </div>
       </div>
-
-      <div class="hero-status-panel">
-        <div class="status-chip">
+      <nav class="menu-bar" aria-label="Primary">
+        <button class="menu-link is-active" data-view-target="overview" type="button">Overview</button>
+        <button class="menu-link" data-view-target="cases" type="button">Cases</button>
+        <button class="menu-link" data-view-target="intake" type="button">New Intake</button>
+      </nav>
+      <div class="topbar-status">
+        <span class="status-chip">
           <span class="signal"></span>
-          <span>Live Workflow Feed</span>
-        </div>
-        <div class="mini-metrics">
-          <div>
-            <span class="metric-label">Active system</span>
-            <strong id="systemHealth">Checking</strong>
-          </div>
-          <div>
-            <span class="metric-label">Cases loaded</span>
-            <strong id="casesLoaded">0</strong>
-          </div>
-          <div>
-            <span class="metric-label">UI mode</span>
-            <strong>Manual dashboard</strong>
-          </div>
-          <div>
-            <span class="metric-label">Workflow mode</span>
-            <strong id="interviewMode">Checking</strong>
-          </div>
-        </div>
+          <span id="systemHealth">Checking</span>
+        </span>
       </div>
     </header>
 
     <main class="dashboard-layout">
-      <section class="metrics-section">
-        <article class="metric-card metric-card-accent">
-          <span class="metric-kicker">Total Cases</span>
-          <strong id="totalCases">0</strong>
-          <p>All workflow records currently tracked by HR.</p>
-        </article>
-        <article class="metric-card">
-          <span class="metric-kicker">Completed</span>
-          <strong id="completedCases">0</strong>
-          <p>Cases that reached final confirmation and closure.</p>
-        </article>
-        <article class="metric-card">
-          <span class="metric-kicker">Pending Review</span>
-          <strong id="pendingReviewCases">0</strong>
-          <p>Generated documentation waiting on manager approval.</p>
-        </article>
-        <article class="metric-card">
-          <span class="metric-kicker">Awaiting Employee</span>
-          <strong id="awaitingEmployeeCases">0</strong>
-          <p>Intakes that still need employee handover input.</p>
-        </article>
-      </section>
+      <section class="dashboard-view is-active" data-view="overview">
+        <header class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow">Today</div>
+            <h1>Focus the desk. Move the handover.</h1>
+            <p>
+              Use the overview to do the next high-impact step: generate the review PDF, schedule an interview,
+              or start the first intake for a new offboarding.
+            </p>
 
-      <section class="story-grid">
-        <article class="panel workflow-panel">
-          <div class="panel-header">
-            <div>
-              <span class="panel-label">Workflow Pulse</span>
-              <h2>Lifecycle map</h2>
+            <div class="today-focus">
+              <article class="focus-card">
+                <div class="focus-kicker">Cases ready for review</div>
+                <div class="focus-value"><span id="pendingReviewCasesFocus">0</span></div>
+                <p class="focus-note">Generate the KT PDF for manager approval.</p>
+                <div class="focus-actions">
+                  <button class="button primary" id="focusGenerateDoc" type="button">Generate Review PDF</button>
+                </div>
+              </article>
+
+              <article class="focus-card">
+                <div class="focus-kicker">Interviews to schedule</div>
+                <div class="focus-value"><span id="awaitingEmployeeCasesFocus">0</span></div>
+                <p class="focus-note">Send the interview email and lock in meeting context.</p>
+                <div class="focus-actions">
+                  <button class="button ghost" id="focusScheduleInterview" type="button">Schedule Interview</button>
+                </div>
+              </article>
+
+              <article class="focus-card focus-card-alt">
+                <div class="focus-kicker">New offboarding</div>
+                <div class="focus-value">Start</div>
+                <p class="focus-note">Create the first intake and kick off notifications.</p>
+                <div class="focus-actions">
+                  <button class="button subtle" data-view-target="intake" type="button">Launch New Intake</button>
+                </div>
+              </article>
+            </div>
+
+            <div class="hero-actions">
+              <button class="button ghost" data-view-target="cases" type="button">Open Case Board</button>
+              <a class="button ghost" href="/docs" target="_blank" rel="noreferrer">Open API Docs</a>
             </div>
           </div>
+
+          <div class="hero-status-panel">
+            <div class="status-block">
+              <span class="metric-label">Cases loaded</span>
+              <strong id="casesLoaded">0</strong>
+            </div>
+            <div class="status-block">
+              <span class="metric-label">Workflow mode</span>
+              <strong id="interviewMode">Checking</strong>
+            </div>
+            <div class="status-block">
+              <span class="metric-label">Selected case</span>
+              <strong id="selectedCaseBadge">No case selected</strong>
+            </div>
+
+            <div class="recommended-step" aria-live="polite">
+              <div class="recommended-title">Next recommended step</div>
+              <div class="recommended-body" id="recommendedStepText">Pick a case to view its next action.</div>
+            </div>
+
+            <p id="selectedCaseSubtext" class="hero-note">Choose a case from the Cases page to inspect workflow state and run actions.</p>
+          </div>
+        </header>
+
+        <section class="metrics-section">
+          <article class="metric-card metric-card-accent">
+            <span class="metric-kicker">Total Cases</span>
+            <strong id="totalCases">0</strong>
+            <p>All active and completed KT workflows currently tracked by the system.</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-kicker">Completed</span>
+            <strong id="completedCases">0</strong>
+            <p>Cases that reached final confirmation and closed successfully.</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-kicker">Pending Review</span>
+            <strong id="pendingReviewCases">0</strong>
+            <p>Generated KT PDFs waiting for manager approval.</p>
+          </article>
+          <article class="metric-card">
+            <span class="metric-kicker">Awaiting Employee</span>
+            <strong id="awaitingEmployeeCases">0</strong>
+            <p>Intakes that still need handover input from the employee.</p>
+          </article>
+        </section>
+
+        <section class="story-grid">
+          <article class="panel workflow-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">Workflow Pulse</span>
+                <h2>Lifecycle map</h2>
+              </div>
+            </div>
             <div class="workflow-rail" id="workflowPulse">
-            <!-- Clickable lifecycle buttons. They trigger the corresponding backend action for the selected case. -->
-            <div class="workflow-node" data-phase="intake" role="button" tabindex="0" aria-label="Intake">
-              <span>1</span>
-              <p>Intake</p>
+              <div class="workflow-node" data-phase="intake" role="button" tabindex="0" aria-label="Intake">
+                <span>1</span>
+                <p>Intake</p>
+              </div>
+              <div class="workflow-node" data-phase="notify" role="button" tabindex="0" aria-label="Notify">
+                <span>2</span>
+                <p>Notify</p>
+              </div>
+              <div class="workflow-node" data-phase="collect" role="button" tabindex="0" aria-label="Collect">
+                <span>3</span>
+                <p>Collect</p>
+              </div>
+              <div class="workflow-node" data-phase="interview" role="button" tabindex="0" aria-label="Interview">
+                <span>4</span>
+                <p>Interview</p>
+              </div>
+              <div class="workflow-node" data-phase="document" role="button" tabindex="0" aria-label="Document">
+                <span>5</span>
+                <p>Document</p>
+              </div>
+              <div class="workflow-node" data-phase="approve" role="button" tabindex="0" aria-label="Approve">
+                <span>6</span>
+                <p>Approve</p>
+              </div>
+              <div class="workflow-node" data-phase="complete" role="button" tabindex="0" aria-label="Complete">
+                <span>7</span>
+                <p>Complete</p>
+              </div>
             </div>
-            <div class="workflow-node" data-phase="notify" role="button" tabindex="0" aria-label="Notify">
-              <span>2</span>
-              <p>Notify</p>
-            </div>
-            <div class="workflow-node" data-phase="collect" role="button" tabindex="0" aria-label="Collect">
-              <span>3</span>
-              <p>Collect</p>
+            <p class="workflow-note">
+              The workflow rail mirrors backend state in real time. A document turns phase 5 green, manager approval
+              closes phases 6 and 7, and rejected reports return to the interview stage.
+            </p>
+          </article>
 
+          <article class="panel activity-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">Operations Snapshot</span>
+                <h2>What matters right now</h2>
+              </div>
             </div>
-
-            <div class="workflow-node" data-phase="interview" role="button" tabindex="0" aria-label="Interview">
-              <span>4</span>
-              <p>Interview</p>
+            <div class="signal-list">
+              <div class="signal-item">
+                <strong>One-click approval</strong>
+                <p>Managers can approve or reject the KT PDF directly from the email review buttons.</p>
+              </div>
+              <div class="signal-item">
+                <strong>Professional documentation</strong>
+                <p>Each case can generate a polished PDF handover pack suitable for employee and manager review.</p>
+              </div>
+              <div class="signal-item">
+                <strong>Rework path</strong>
+                <p>If a report is rejected, the employee is notified and the workflow returns to the interview/report stage.</p>
+              </div>
             </div>
-            <div class="workflow-node" data-phase="document" role="button" tabindex="0" aria-label="Document">
-              <span>5</span>
-              <p>Document</p>
-            </div>
-            <div class="workflow-node" data-phase="approve" role="button" tabindex="0" aria-label="Approve">
-              <span>6</span>
-              <p>Approve</p>
-            </div>
-            <div class="workflow-node" data-phase="complete" role="button" tabindex="0" aria-label="Complete">
-              <span>7</span>
-              <p>Complete</p>
-            </div>
-          </div>
-          <p class="workflow-note">
-            The dashboard reflects your backend state in real time. Open a case to inspect full status,
-            audit events, and the professional meeting-notes PDF shared with the employee, manager, and HR.
-          </p>
-        </article>
-
-        <article class="panel spotlight-panel">
-          <div class="panel-header">
-            <div>
-              <span class="panel-label">Case Spotlight</span>
-              <h2 id="spotlightTitle">Select a case</h2>
-            </div>
-          </div>
-          <div id="spotlightBody" class="spotlight-body">
-            <p>Choose a case from the table to inspect its workflow stage, next action, and timeline.</p>
-          </div>
-        </article>
+          </article>
+        </section>
       </section>
 
-      <section class="table-grid">
-        <article class="panel cases-panel">
-          <div class="panel-header">
-            <div>
-              <span class="panel-label">Command Deck</span>
-              <h2>HR case board</h2>
+      <section class="dashboard-view" data-view="cases">
+        <section class="control-grid">
+          <article class="panel command-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">Mission Control</span>
+                <h2>Case controls</h2>
+              </div>
             </div>
-            <button class="button subtle" id="refreshDashboard" type="button">Refresh</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Case ID</th>
-                  <th>Employee</th>
-                  <th>Department</th>
-                  <th>Stage</th>
-                  <th>Status</th>
-                  <th>Next Action</th>
-                </tr>
-              </thead>
-              <tbody id="casesTableBody">
-                <tr>
-                  <td colspan="6" class="empty-state">Loading cases...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </article>
+            <div class="control-stack">
+              <div class="control-card control-card-highlight">
+                <span class="control-label">Selected case</span>
+                <strong id="selectedCaseBadgeCases">No case selected</strong>
+                <p id="selectedCaseSubtextCases">Pick a case from the board to run workflow actions.</p>
+              </div>
+              <div class="control-card">
+                <div class="filter-row">
+                  <label>
+                    <span>Stage Filter</span>
+                    <select id="stageFilter">
+                      <option value="">All stages</option>
+                      <option value="resignation_intake">Resignation Intake</option>
+                      <option value="notifications_sent">Notifications Sent</option>
+                      <option value="submission_received">Submission Received</option>
+                      <option value="interview_scheduled">Interview Scheduled</option>
+                      <option value="interview_completed">Interview</option>
+                      <option value="under_review">Under Review</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Status Filter</span>
+                    <select id="statusFilter">
+                      <option value="">All statuses</option>
+                      <option value="registered">Registered</option>
+                      <option value="awaiting_employee">Awaiting Employee</option>
+                      <option value="awaiting_interview">Awaiting Interview</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="awaiting_review">Awaiting Review</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="action-row">
+                  <button class="button subtle" id="applyFiltersBtn" type="button">Apply Filters</button>
+                  <button class="button ghost" id="clearFiltersBtn" type="button">Clear Filters</button>
+                </div>
+              </div>
+              <div class="control-card">
+                <span class="control-label">Workflow actions</span>
+                <div class="action-grid">
+                  <button class="button success" id="generateDocumentBtn" type="button">Generate Review PDF</button>
+                  <button class="button subtle" id="scheduleInterviewBtn" type="button">Schedule Interview</button>
+                </div>
+                <p id="actionStatus" class="form-status">Run document generation or open interview scheduling for the selected case.</p>
+              </div>
+            </div>
+          </article>
 
-        <article class="panel intake-panel" id="intake-panel">
-          <div class="panel-header">
-            <div>
-              <span class="panel-label">New Case</span>
-              <h2>HR resignation intake</h2>
+          <article class="panel spotlight-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">Case Spotlight</span>
+                <h2 id="spotlightTitle">Select a case</h2>
+              </div>
             </div>
-          </div>
-          <form id="intakeForm" class="intake-form">
-            <div class="field-grid">
-              <label>
-                <span>Employee ID</span>
-                <input name="employee_id" required placeholder="EMP-230">
-              </label>
-              <label>
-                <span>Employee Name</span>
-                <input name="employee_name" required placeholder="Aarav Singh">
-              </label>
-              <label>
-                <span>Employee Email</span>
-                <input name="employee_email" type="email" required placeholder="aarav@example.com">
-              </label>
-              <label>
-                <span>Department</span>
-                <input name="department" required placeholder="Platform Engineering">
-              </label>
-              <label>
-                <span>Job Title</span>
-                <input name="job_title" required placeholder="Senior Backend Engineer">
-              </label>
-              <label>
-                <span>Manager Name</span>
-                <input name="manager_name" required placeholder="Meera Kapoor">
-              </label>
-              <label>
-                <span>Manager Email</span>
-                <input name="manager_email" type="email" required placeholder="meera@example.com">
-              </label>
-              <label>
-                <span>HR Contact Name</span>
-                <input name="hr_contact_name" required placeholder="Nisha Verma">
-              </label>
-              <label>
-                <span>HR Contact Email</span>
-                <input name="hr_contact_email" type="email" required placeholder="nisha@example.com">
-              </label>
-              <label>
-                <span>Resignation Date</span>
-                <input name="resignation_date" type="date" required>
-              </label>
-              <label>
-                <span>Last Working Day</span>
-                <input name="last_working_day" type="date" required>
-              </label>
-              <label class="field-span-full">
-                <span>Reason For Exit</span>
-                <input name="reason_for_exit" placeholder="Pursuing a leadership opportunity">
-              </label>
-              <label class="field-span-full">
-                <span>Notes</span>
-                <textarea name="notes" rows="4" placeholder="Highlight critical systems, handover urgency, or dependencies."></textarea>
-              </label>
+            <div id="spotlightBody" class="spotlight-body">
+              <p>Choose a case from the board to inspect its workflow stage, next action, and document status.</p>
             </div>
-            <div class="form-footer">
-              <button class="button primary" type="submit">Create KT Case</button>
-              <p id="formStatus" class="form-status">Ready to create a new intake record.</p>
+          </article>
+        </section>
+
+        <section class="table-grid table-grid-single">
+          <article class="panel cases-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">Command Deck</span>
+                <h2>HR case board</h2>
+              </div>
+              <button class="button subtle" id="refreshDashboard" type="button">Refresh</button>
             </div>
-          </form>
-        </article>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Case ID</th>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th>Stage</th>
+                    <th>Status</th>
+                    <th>Next Action</th>
+                  </tr>
+                </thead>
+                <tbody id="casesTableBody">
+                  <tr>
+                    <td colspan="6" class="empty-state">Loading cases...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
       </section>
 
+      <section class="dashboard-view" data-view="intake">
+        <section class="intake-grid">
+          <article class="panel intake-panel" id="intake-panel">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">New Case</span>
+                <h2>HR resignation intake</h2>
+              </div>
+            </div>
+            <form id="intakeForm" class="intake-form">
+              <div class="field-grid">
+                <label>
+                  <span>Employee ID</span>
+                  <input name="employee_id" required placeholder="EMP-230">
+                </label>
+                <label>
+                  <span>Employee Name</span>
+                  <input name="employee_name" required placeholder="Aarav Singh">
+                </label>
+                <label>
+                  <span>Employee Email</span>
+                  <input name="employee_email" type="email" required placeholder="aarav@example.com">
+                </label>
+                <label>
+                  <span>Department</span>
+                  <input name="department" required placeholder="Platform Engineering">
+                </label>
+                <label>
+                  <span>Job Title</span>
+                  <input name="job_title" required placeholder="Senior Backend Engineer">
+                </label>
+                <label>
+                  <span>Manager Name</span>
+                  <input name="manager_name" required placeholder="Meera Kapoor">
+                </label>
+                <label>
+                  <span>Manager Email</span>
+                  <input name="manager_email" type="email" required placeholder="meera@example.com">
+                </label>
+                <label>
+                  <span>HR Contact Name</span>
+                  <input name="hr_contact_name" required placeholder="Nisha Verma">
+                </label>
+                <label>
+                  <span>HR Contact Email</span>
+                  <input name="hr_contact_email" type="email" required placeholder="nisha@example.com">
+                </label>
+                <label>
+                  <span>Resignation Date</span>
+                  <input name="resignation_date" type="date" required>
+                </label>
+                <label>
+                  <span>Last Working Day</span>
+                  <input name="last_working_day" type="date" required>
+                </label>
+                <label class="field-span-full">
+                  <span>Reason For Exit</span>
+                  <input name="reason_for_exit" placeholder="Pursuing a leadership opportunity">
+                </label>
+                <label class="field-span-full">
+                  <span>Notes</span>
+                  <textarea name="notes" rows="4" placeholder="Highlight critical systems, handover urgency, or dependencies."></textarea>
+                </label>
+              </div>
+              <div class="form-footer">
+                <button class="button primary" type="submit">Create KT Case</button>
+                <p id="formStatus" class="form-status">Ready to create a new intake record.</p>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel activity-panel intake-guide">
+            <div class="panel-header">
+              <div>
+                <span class="panel-label">Intake Guidance</span>
+                <h2>Create cleaner handovers</h2>
+              </div>
+            </div>
+            <div class="signal-list">
+              <div class="signal-item">
+                <strong>Capture the right owner</strong>
+                <p>Use the active reporting manager so review emails and one-click approvals reach the right person.</p>
+              </div>
+              <div class="signal-item">
+                <strong>Set a meaningful last working day</strong>
+                <p>The dashboard uses this context to frame the urgency and continuity expectations for the KT process.</p>
+              </div>
+              <div class="signal-item">
+                <strong>Use notes strategically</strong>
+                <p>Highlight critical systems, operational risk, or handover pressure so the generated KT dossier starts with the right context.</p>
+              </div>
+            </div>
+          </article>
+        </section>
+      </section>
     </main>
   </div>
 
