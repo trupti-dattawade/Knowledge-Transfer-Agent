@@ -102,7 +102,19 @@ function renderSpotlight(caseDetail) {
         : ""
     }
   `;
+  // Mark lifecycle pulse nodes as completed/green
+  syncWorkflowPulse(workflow);
   resetInterviewPanel(workflow.case_id);
+}
+
+// Debug helper: quickly verify backend stage/status driving the UI
+function _debugWorkflowPulse(workflow) {
+  try {
+    // Uncomment locally if needed
+    // console.log("syncWorkflowPulse", workflow?.stage, workflow?.status);
+  } catch (_) {
+    // ignore
+  }
 }
 
 async function loadDashboard() {
@@ -139,6 +151,81 @@ async function loadCaseDetail(caseId, rerenderTable = true) {
     renderCasesTable(state.dashboard);
   }
 }
+
+function syncWorkflowPulse(workflow) {
+  const rail = document.getElementById("workflowPulse");
+  if (!rail || !workflow) return;
+
+  // Map backend stages/statuses to a phase completion model
+  const stage = String(workflow.stage || "");
+  const status = String(workflow.status || "");
+
+  const phaseOrder = ["intake", "notify", "collect", "interview", "document", "approve", "complete"];
+
+  // Completion rules (best-effort with existing backend stages)
+  // intake -> when workflow.stage is anything notifications_sent or later
+  // notify -> notifications_sent
+  // collect -> submission_received
+  // interview -> interview_scheduled or interview_completed or in_progress
+  // document -> documentation_generated or under_review
+  // approve -> completed via approved path
+  // complete -> completed stage
+  const completedPhases = new Set();
+
+  if (stage === "notifications_sent") completedPhases.add("intake");
+  if (["notifications_sent"].includes(stage)) completedPhases.add("notify");
+
+  if (["submission_received"].includes(stage)) {
+    completedPhases.add("intake");
+    completedPhases.add("notify");
+    completedPhases.add("collect");
+  }
+
+  if (["submission_received", "interview_scheduled", "interview_completed"].includes(stage)) {
+    completedPhases.add("intake");
+    completedPhases.add("notify");
+    completedPhases.add("collect");
+    if (["interview_scheduled", "interview_completed"].includes(stage)) completedPhases.add("interview");
+  }
+
+  if (["documentation_generated", "under_review", "changes_requested"].includes(stage)) {
+    completedPhases.add("intake");
+    completedPhases.add("notify");
+    completedPhases.add("collect");
+    completedPhases.add("interview");
+    completedPhases.add("document");
+    if (stage === "documentation_generated") completedPhases.add("document");
+  }
+
+  if (stage === "completed") {
+    phaseOrder.forEach((p) => completedPhases.add(p));
+  }
+
+  phaseOrder.forEach((phase, idx) => {
+    const node = rail.querySelector(`[data-phase="${phase}"]`);
+    if (!node) return;
+
+    const span = node.querySelector("span");
+    const completed = completedPhases.has(phase);
+
+    if (completed) {
+      node.classList.add("phase-complete");
+      node.setAttribute("data-complete", "true");
+      if (span) {
+        span.style.background = "linear-gradient(135deg, rgba(0, 128, 0, 0.35), rgba(0, 128, 0, 0.85))";
+        span.style.color = "#ffffff";
+      }
+    } else {
+      node.classList.remove("phase-complete");
+      node.removeAttribute("data-complete");
+      if (span) {
+        span.style.background = "linear-gradient(135deg, rgba(31, 111, 235, 0.16), rgba(31, 111, 235, 0.3))";
+        span.style.color = "var(--accent-strong)";
+      }
+    }
+  });
+}
+
 
 function renderInterviewSession(session) {
   state.interviewSession = session;
