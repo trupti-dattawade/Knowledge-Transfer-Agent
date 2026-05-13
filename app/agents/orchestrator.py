@@ -168,13 +168,16 @@ class WorkflowOrchestrator:
             interview_datetime=payload.interview_datetime,
             duration_minutes=payload.duration_minutes,
             meeting_link=meeting_link,
-            interview_link=payload.interview_link,
+            # meeting-only: interview_link not used
+            interview_link=None,
             scheduled_by=payload.scheduled_by,
         )
-        interview_link_text = payload.interview_link or "Not provided"
+        # Meeting-only behavior: do not email HR; use meeting_link only.
         sent = self.email_agent.send_case_notifications(
+
             case_record,
             [
+
                 (
                     str(case_record.employee.employee_email),
                     f"Knowledge Transfer (KT) Interview Scheduled - {case_record.employee.employee_name}",
@@ -211,8 +214,10 @@ class WorkflowOrchestrator:
                     "interview_scheduled",
                 ),
                 (
-                    str(case_record.employee.hr_contact_email),
-                    f"KT interview scheduled for {case_record.employee.employee_name}",
+                    # meeting-only: HR not emailed at this stage
+                    # str(case_record.employee.hr_contact_email),
+                    # f"KT interview scheduled for {case_record.employee.employee_name}",
+
                     (
                         f"The KT interview for {case_record.employee.employee_name} has been scheduled.\n\n"
                         f"Interview time: {payload.interview_datetime.isoformat()}\n"
