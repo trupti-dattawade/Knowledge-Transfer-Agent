@@ -262,6 +262,15 @@ function renderCasesTable(dashboard) {
   });
 }
 
+function isManagerApprovalsAllowedForCase(caseDetail) {
+  if (!caseDetail?.case?.workflow) return false;
+  // Manager approvals are allowed only when the case is ready for review.
+  // Backend sets stage="under_review" and/or status="awaiting_review".
+  const workflow = caseDetail.case.workflow;
+  return workflow.stage === "under_review" || workflow.status === "awaiting_review";
+}
+
+
 function renderSpotlight(caseDetail) {
   const title = document.getElementById("spotlightTitle");
   const body = document.getElementById("spotlightBody");
@@ -691,6 +700,10 @@ async function generateDocumentationForSelectedCase() {
     if (actionStatus) actionStatus.textContent = "Select a case first.";
     return;
   }
+  if (state.user.role !== "hr") {
+    if (actionStatus) actionStatus.textContent = "Only HR users can generate the review PDF.";
+    return;
+  }
   if (actionStatus) actionStatus.textContent = "Generating professional KT review PDF...";
   try {
     await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}/documentation/generate`, {
@@ -771,6 +784,11 @@ async function submitSchedule(event) {
 
 async function createIntake(event) {
   event.preventDefault();
+  if (state.user.role !== "hr") {
+    const statusNode = document.getElementById("formStatus");
+    if (statusNode) statusNode.textContent = "Only HR users can create a new intake.";
+    return;
+  }
   const form = event.currentTarget;
   const statusNode = document.getElementById("formStatus");
   const formData = new FormData(form);
@@ -861,11 +879,34 @@ async function submitApproval(event) {
     return;
   }
 
+  if (state.user.role !== "manager") {
+    status.textContent = "Only managers can submit approval decisions.";
+    return;
+  }
+
+  // Enforce allowed states on the client side as requested.
+  let detail = null;
+  try {
+    detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
+  } catch (e) {
+    // fall through; backend will handle if needed
+  }
+
+  if (detail && !isManagerApprovalsAllowedForCase(detail)) {
+    status.textContent = "This case is not ready for manager review.";
+    return;
+  }
+
   const decisionValue = decision.value;
   const commentsValue = comments.value.trim();
 
   if (!decisionValue) {
     status.textContent = "Please select a decision.";
+    return;
+  }
+
+  if (commentsValue.length < 5) {
+    status.textContent = "Please add at least a short comment (min 5 characters).";
     return;
   }
 
@@ -884,12 +925,14 @@ async function submitApproval(event) {
       body: JSON.stringify(payload),
     });
 
+    // Refresh everything so every role sees updated state.
     closeApprovalModal();
     await loadDashboard();
     await loadCaseDetail(caseId, false);
+
     const workflowStatusNode = document.getElementById("actionStatus");
     if (workflowStatusNode) {
-      workflowStatusNode.textContent = `Report ${decisionValue === 'approved' ? 'approved' : 'changes requested'} successfully.`;
+      workflowStatusNode.textContent = `Report ${decisionValue === "approved" ? "approved" : "changes requested"} successfully.`;
     }
   } catch (error) {
     status.textContent = `Could not submit decision: ${error.message}`;
@@ -902,7 +945,27 @@ async function approveReportForSelectedCase() {
     if (actionStatus) actionStatus.textContent = "Select a case first.";
     return;
   }
+  if (state.user.role !== "manager") {
+    if (actionStatus) actionStatus.textContent = "Only managers can approve reports.";
+    return;
+  }
+
+  // Enforce allowed states on the client side.
+  let detail = null;
+  try {
+    detail = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
+  } catch (e) {
+    // If we can't load detail, backend will still guard.
+  }
+
+  if (detail && !isManagerApprovalsAllowedForCase(detail)) {
+    if (actionStatus) actionStatus.textContent = "This case is not ready for manager approval.";
+    return;
+  }
+
   openApprovalModal(state.selectedCaseId);
+  const { decision } = getApprovalNodes();
+  if (decision) decision.value = "approved";
   if (actionStatus) actionStatus.textContent = "Approval modal opened for the selected case.";
 }
 
@@ -912,6 +975,24 @@ async function rejectReportForSelectedCase() {
     if (actionStatus) actionStatus.textContent = "Select a case first.";
     return;
   }
+  if (state.user.role !== "manager") {
+    if (actionStatus) actionStatus.textContent = "Only managers can request changes.";
+    return;
+  }
+
+  // Enforce allowed states on the client side.
+  let detail = null;
+  try {
+    detail = await fetchJson(`/api/v1/kt/cases/${state.selectedCaseId}`);
+  } catch (e) {
+    // If we can't load detail, backend will still guard.
+  }
+
+  if (detail && !isManagerApprovalsAllowedForCase(detail)) {
+    if (actionStatus) actionStatus.textContent = "This case is not ready for manager review.";
+    return;
+  }
+
   openApprovalModal(state.selectedCaseId);
   // Pre-select reject option
   const { decision } = getApprovalNodes();
@@ -939,6 +1020,9 @@ async function boot() {
     document.getElementById("actionStatus")?.scrollIntoView({ behavior: "smooth", block: "center" });
     await loadDashboard();
     await generateDocumentationForSelectedCase();
+  });
+  document.getElementById("reviewReportsBtn")?.addEventListener("click", () => {
+    setActiveView("cases");
   });
 
   document.getElementById("applyFiltersBtn")?.addEventListener("click", applyFilters);

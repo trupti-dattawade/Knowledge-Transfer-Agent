@@ -159,7 +159,7 @@ html {
 .page-shell.role-hr .role-logged-in-only,
 .page-shell.role-manager .role-logged-in-only,
 .page-shell.role-employee .role-logged-in-only {
-  display: inline-flex !important;
+  display: revert !important;
 }
 
 body {
