@@ -267,6 +267,8 @@ class ResignationIntakeResponse(BaseModel):
 class WorkflowSummaryResponse(BaseModel):
     case_id: str
     employee_name: str
+    employee_email: EmailStr
+    manager_email: EmailStr
     department: str
     stage: str
     status: str

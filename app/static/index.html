@@ -10,6 +10,41 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <div class="login-overlay" id="loginOverlay" aria-label="Sign in to Knowledge Transfer">
+    <div class="login-panel">
+      <div class="login-panel-header">
+        <div class="brand-mark">KT</div>
+        <div>
+          <div class="eyebrow">Role-based access</div>
+          <strong>Sign in as HR, manager, or employee</strong>
+        </div>
+      </div>
+      <form id="loginForm" class="login-form">
+        <label>
+          Role
+          <select id="loginRole" name="role" required>
+            <option value="">Select role</option>
+            <option value="hr">HR</option>
+            <option value="manager">Manager</option>
+            <option value="employee">Employee</option>
+          </select>
+        </label>
+        <label>
+          Email
+          <input id="loginEmail" name="email" type="email" placeholder="you@company.com" required />
+        </label>
+        <label>
+          Full name
+          <input id="loginName" name="name" type="text" placeholder="Your name" required />
+        </label>
+        <button class="button primary" type="submit">Sign in</button>
+      </form>
+      <div class="login-notes">
+        <p>Use any valid email address with the selected role. Role access is enforced in the dashboard UI.</p>
+        <p><strong>Example accounts:</strong> hr@company.local, manager@company.local, employee@company.local</p>
+      </div>
+    </div>
+  </div>
   <div class="page-shell">
     <div class="background-orbit orbit-a"></div>
     <div class="background-orbit orbit-b"></div>
@@ -26,13 +61,17 @@
       <nav class="menu-bar" aria-label="Primary">
         <button class="menu-link is-active" data-view-target="overview" type="button">Overview</button>
         <button class="menu-link" data-view-target="cases" type="button">Cases</button>
-        <button class="menu-link" data-view-target="intake" type="button">New Intake</button>
+        <button class="menu-link role-hr-only" data-view-target="intake" type="button">New Intake</button>
       </nav>
       <div class="topbar-status">
         <span class="status-chip">
           <span class="signal"></span>
           <span id="systemHealth">Checking</span>
         </span>
+        <div class="topbar-user">
+          <span id="currentUserLabel">Not signed in</span>
+          <button class="button ghost small hidden role-logged-in-only" id="logoutBtn" type="button">Logout</button>
+        </div>
       </div>
     </header>
 
@@ -43,8 +82,7 @@
             <div class="eyebrow">Today</div>
             <h1>Focus the desk. Move the handover.</h1>
             <p>
-              Use the overview to do the next high-impact step: generate the review PDF, schedule an interview,
-              or start the first intake for a new offboarding.
+              Use the overview to do the next high-impact step: generate the review PDF, track status, or start the first intake for a new offboarding.
             </p>
 
             <div class="today-focus">
@@ -58,12 +96,9 @@
               </article>
 
               <article class="focus-card">
-                <div class="focus-kicker">Interviews to schedule</div>
+                <div class="focus-kicker">Pending employee submissions</div>
                 <div class="focus-value"><span id="awaitingEmployeeCasesFocus">0</span></div>
-                <p class="focus-note">Send the interview email and lock in meeting context.</p>
-                <div class="focus-actions">
-                  <button class="button ghost" id="focusScheduleInterview" type="button">Schedule Interview</button>
-                </div>
+                <p class="focus-note">Track employees who still need to submit handover details.</p>
               </article>
 
               <article class="focus-card focus-card-alt">
@@ -99,6 +134,16 @@
             <div class="recommended-step" aria-live="polite">
               <div class="recommended-title">Next recommended step</div>
               <div class="recommended-body" id="recommendedStepText">Pick a case to view its next action.</div>
+            </div>
+
+            <div class="employee-summary role-employee-only hidden" id="employeeStatusPanel">
+              <div class="employee-summary-header">
+                <span class="panel-label">My Status</span>
+                <h2>My KT assignment</h2>
+              </div>
+              <div class="employee-summary-body" id="employeeStatusContent">
+                <p>Your employee status and case details will appear here once you sign in.</p>
+              </div>
             </div>
 
             <p id="selectedCaseSubtext" class="hero-note">Choose a case from the Cases page to inspect workflow state and run actions.</p>
@@ -149,9 +194,9 @@
                 <span>3</span>
                 <p>Collect</p>
               </div>
-              <div class="workflow-node" data-phase="interview" role="button" tabindex="0" aria-label="Interview">
+              <div class="workflow-node" data-phase="interview" role="button" tabindex="0" aria-label="Meeting">
                 <span>4</span>
-                <p>Interview</p>
+                <p>Meeting</p>
               </div>
               <div class="workflow-node" data-phase="document" role="button" tabindex="0" aria-label="Document">
                 <span>5</span>
@@ -168,7 +213,7 @@
             </div>
             <p class="workflow-note">
               The workflow rail mirrors backend state in real time. A document turns phase 5 green, manager approval
-              closes phases 6 and 7, and rejected reports return to the interview stage.
+              closes phases 6 and 7, and rejected reports return to the review stage.
             </p>
           </article>
 
@@ -221,9 +266,9 @@
                       <option value="resignation_intake">Resignation Intake</option>
                       <option value="notifications_sent">Notifications Sent</option>
                       <option value="submission_received">Submission Received</option>
-                      <option value="interview_scheduled">Interview Scheduled</option>
-                      <option value="interview_completed">Interview</option>
+                      <option value="documentation_generated">Documentation Generated</option>
                       <option value="under_review">Under Review</option>
+                      <option value="changes_requested">Changes Requested</option>
                       <option value="completed">Completed</option>
                     </select>
                   </label>
@@ -233,9 +278,9 @@
                       <option value="">All statuses</option>
                       <option value="registered">Registered</option>
                       <option value="awaiting_employee">Awaiting Employee</option>
-                      <option value="awaiting_interview">Awaiting Interview</option>
                       <option value="in_progress">In Progress</option>
                       <option value="awaiting_review">Awaiting Review</option>
+                      <option value="changes_requested">Changes Requested</option>
                       <option value="completed">Completed</option>
                     </select>
                   </label>
@@ -247,11 +292,10 @@
               </div>
               <div class="control-card">
                 <span class="control-label">Workflow actions</span>
-                <div class="action-grid">
+                <div class="action-grid role-hr-only">
                   <button class="button success" id="generateDocumentBtn" type="button">Generate Review PDF</button>
-                  <button class="button subtle" id="scheduleInterviewBtn" type="button">Schedule Interview</button>
                 </div>
-                <p id="actionStatus" class="form-status">Run document generation or open interview scheduling for the selected case.</p>
+                <p id="actionStatus" class="form-status">Run document generation for the selected case.</p>
               </div>
             </div>
           </article>
@@ -397,43 +441,6 @@
         </section>
       </section>
     </main>
-  </div>
-
-  <div class="modal-backdrop is-hidden" id="scheduleModalBackdrop" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="scheduleModalTitle">
-      <div class="panel-header modal-header">
-        <div>
-          <span class="panel-label">Interview Scheduling</span>
-          <h2 id="scheduleModalTitle">Send interview email</h2>
-        </div>
-        <button class="button subtle modal-close" id="scheduleModalClose" type="button" aria-label="Close popup">Close</button>
-      </div>
-
-      <form id="scheduleForm" class="intake-form">
-        <div class="field-grid">
-          <label>
-            <span>Meeting Link</span>
-            <input id="scheduleMeetingLink" name="meeting_link" type="url" required placeholder="https://meet.google.com/...">
-          </label>
-          <label>
-            <span>Interview Link</span>
-            <input id="scheduleInterviewLink" name="interview_link" type="url" required placeholder="https://forms.example.com/interview">
-          </label>
-          <label>
-            <span>Interview Date & Time</span>
-            <input id="scheduleDatetime" name="interview_datetime" type="datetime-local" required>
-          </label>
-          <label>
-            <span>Duration (minutes)</span>
-            <input id="scheduleDuration" name="duration_minutes" type="number" min="15" max="180" value="60" required>
-          </label>
-        </div>
-        <div class="form-footer">
-          <button class="button primary" type="submit">Send Employee Email</button>
-          <p id="scheduleFormStatus" class="form-status">Add the links, then send the interview email.</p>
-        </div>
-      </form>
-    </div>
   </div>
 
   <script src="/static/app.js"></script>

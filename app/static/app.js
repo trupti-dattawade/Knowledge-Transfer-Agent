@@ -8,6 +8,11 @@ const state = {
     stage: "",
     status: "",
   },
+  user: {
+    role: null,
+    email: null,
+    name: null,
+  },
 };
 
 async function fetchJson(url, options = {}) {
@@ -31,10 +36,154 @@ function updateHealth(status = "Live") {
 function updateInterviewMode() {
   const node = document.getElementById("interviewMode");
   if (!node) return;
-  node.textContent = "PDF review workflow";
+  node.textContent = "KT meeting and review workflow";
+}
+
+function loadUserFromStorage() {
+  const raw = localStorage.getItem("kt_user");
+  if (!raw) return;
+  try {
+    const user = JSON.parse(raw);
+    state.user = {
+      role: user.role || null,
+      email: user.email || null,
+      name: user.name || null,
+    };
+  } catch (_) {
+    state.user = { role: null, email: null, name: null };
+  }
+}
+
+function saveUserToStorage() {
+  localStorage.setItem("kt_user", JSON.stringify(state.user));
+}
+
+function clearUserFromStorage() {
+  localStorage.removeItem("kt_user");
+}
+
+function showLoginOverlay() {
+  const overlay = document.getElementById("loginOverlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function hideLoginOverlay() {
+  const overlay = document.getElementById("loginOverlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function updateUserLabel() {
+  const label = document.getElementById("currentUserLabel");
+  if (!label) return;
+  label.textContent = state.user.role
+    ? `${state.user.name} (${state.user.role.toUpperCase()})`
+    : "Not signed in";
+}
+
+function applyRoleUI() {
+  const root = document.querySelector(".page-shell");
+  if (!root) return;
+  root.classList.remove("role-hr", "role-manager", "role-employee");
+  if (state.user.role) {
+    root.classList.add(`role-${state.user.role}`);
+  }
+  updateUserLabel();
+}
+
+function filterDashboardByRole(dashboard) {
+  if (!dashboard || !state.user.role || state.user.role === "hr") {
+    return dashboard;
+  }
+
+  const filteredCases = dashboard.cases.filter((item) => {
+    if (state.user.role === "manager") {
+      return item.manager_email?.toLowerCase() === state.user.email?.toLowerCase();
+    }
+    if (state.user.role === "employee") {
+      return item.employee_email?.toLowerCase() === state.user.email?.toLowerCase();
+    }
+    return false;
+  });
+
+  return {
+    ...dashboard,
+    cases: filteredCases,
+    total_cases: filteredCases.length,
+    completed_cases: filteredCases.filter((item) => item.stage === "completed").length,
+    pending_review_cases: filteredCases.filter((item) => item.status === "awaiting_review").length,
+    awaiting_employee_cases: filteredCases.filter((item) => item.status === "awaiting_employee").length,
+  };
+}
+
+function renderEmployeeStatus() {
+  const panel = document.getElementById("employeeStatusPanel");
+  const content = document.getElementById("employeeStatusContent");
+  if (!panel || !content) return;
+  if (state.user.role !== "employee") {
+    panel.classList.add("hidden");
+    return;
+  }
+
+  panel.classList.remove("hidden");
+  const visibleCases = state.dashboard?.cases || [];
+  if (!visibleCases.length) {
+    content.innerHTML = `<p>You do not have an assigned case yet.</p>`;
+    return;
+  }
+  const selected = visibleCases.find((item) => item.case_id === state.selectedCaseId) || visibleCases[0];
+  content.innerHTML = `
+    <p>Case assigned to you: <strong>${selected.case_id}</strong></p>
+    <p>Stage: <strong>${selected.stage}</strong></p>
+    <p>Status: <strong>${selected.status}</strong></p>
+    <p>Next action: <strong>${selected.next_action}</strong></p>
+  `;
+}
+
+function requireLogin() {
+  return Boolean(state.user.role && state.user.email && state.user.name);
+}
+
+function ensureSignedIn() {
+  if (requireLogin()) {
+    hideLoginOverlay();
+    return;
+  }
+  showLoginOverlay();
+}
+
+function handleLogout() {
+  state.user = { role: null, email: null, name: null };
+  clearUserFromStorage();
+  applyRoleUI();
+  ensureSignedIn();
+  loadDashboard();
+}
+
+function handleLogin(event) {
+  event.preventDefault();
+  const roleInput = document.getElementById("loginRole");
+  const emailInput = document.getElementById("loginEmail");
+  const nameInput = document.getElementById("loginName");
+  if (!roleInput || !emailInput || !nameInput) return;
+
+  const role = roleInput.value;
+  const email = emailInput.value.trim();
+  const name = nameInput.value.trim();
+  if (!role || !email || !name) {
+    return;
+  }
+
+  state.user = { role, email, name };
+  saveUserToStorage();
+  applyRoleUI();
+  ensureSignedIn();
+  loadDashboard();
 }
 
 function setActiveView(view) {
+  if (view === "intake" && state.user.role !== "hr") {
+    view = "overview";
+  }
   state.currentView = view;
   document.querySelectorAll(".dashboard-view").forEach((section) => {
     section.classList.toggle("is-active", section.dataset.view === view);
@@ -164,7 +313,7 @@ function renderSpotlight(caseDetail) {
     }
     ${
       caseDetail.case.interview_schedule?.interview_link
-        ? `<p><strong>Interview link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.interview_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.interview_link}</a></p>`
+        ? `<p><strong>Recording link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.interview_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.interview_link}</a></p>`
         : ""
     }
     ${
@@ -205,20 +354,21 @@ async function loadDashboard() {
   if (state.filters.stage) query.set("stage", state.filters.stage);
   if (state.filters.status) query.set("status", state.filters.status);
   const dashboard = await fetchJson(`/api/v1/kt/dashboard${query.toString() ? `?${query.toString()}` : ""}`);
-  state.dashboard = dashboard;
+  state.dashboard = filterDashboardByRole(dashboard);
 
-  if (!state.selectedCaseId && dashboard.cases.length) {
-    state.selectedCaseId = dashboard.cases[0].case_id;
+  if (!state.selectedCaseId && state.dashboard.cases.length) {
+    state.selectedCaseId = state.dashboard.cases[0].case_id;
   }
   if (
     state.selectedCaseId &&
-    !dashboard.cases.find((item) => item.case_id === state.selectedCaseId)
+    !state.dashboard.cases.find((item) => item.case_id === state.selectedCaseId)
   ) {
-    state.selectedCaseId = dashboard.cases[0]?.case_id || null;
+    state.selectedCaseId = state.dashboard.cases[0]?.case_id || null;
   }
 
-  renderMetrics(dashboard);
-  renderCasesTable(dashboard);
+  renderMetrics(state.dashboard);
+  renderCasesTable(state.dashboard);
+  renderEmployeeStatus();
 
   if (state.selectedCaseId) {
     await loadCaseDetail(state.selectedCaseId, false);
@@ -279,56 +429,12 @@ function wireWorkflowPulseButtons() {
   });
 }
 
-function getScheduleNodes() {
-  return {
-    backdrop: document.getElementById("scheduleModalBackdrop"),
-    form: document.getElementById("scheduleForm"),
-    status: document.getElementById("scheduleFormStatus"),
-    meetingLink: document.getElementById("scheduleMeetingLink"),
-    interviewLink: document.getElementById("scheduleInterviewLink"),
-    interviewDatetime: document.getElementById("scheduleDatetime"),
-    duration: document.getElementById("scheduleDuration"),
-  };
-}
-
 function getActionNodes() {
   return {
     stageFilter: document.getElementById("stageFilter"),
     statusFilter: document.getElementById("statusFilter"),
     actionStatus: document.getElementById("actionStatus"),
   };
-}
-
-function openScheduleModal(caseId) {
-  const nodes = getScheduleNodes();
-  if (!nodes.backdrop || !nodes.form || !nodes.status || !nodes.meetingLink || !nodes.interviewDatetime || !nodes.duration) {
-    return;
-  }
-  const now = new Date();
-  const interviewStart = new Date(now.getTime() + 30 * 60 * 1000);
-  state.scheduleCaseId = caseId;
-  nodes.backdrop.classList.remove("is-hidden");
-  nodes.backdrop.setAttribute("aria-hidden", "false");
-  nodes.status.textContent = "Add the links, then send the interview email.";
-  nodes.form.reset();
-  nodes.duration.value = "60";
-  nodes.interviewDatetime.value = toLocalDatetimeInputValue(interviewStart);
-  nodes.meetingLink.focus();
-}
-
-function closeScheduleModal() {
-  const { backdrop, status, form } = getScheduleNodes();
-  if (!backdrop || !status || !form) return;
-  state.scheduleCaseId = null;
-  backdrop.classList.add("is-hidden");
-  backdrop.setAttribute("aria-hidden", "true");
-  status.textContent = "Add the links, then send the interview email.";
-  form.reset();
-}
-
-function toLocalDatetimeInputValue(date) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
 }
 
 function syncWorkflowPulse(workflow, hasDocumentation = false) {
@@ -599,16 +705,6 @@ async function generateDocumentationForSelectedCase() {
   }
 }
 
-async function scheduleInterviewForSelectedCase() {
-  const { actionStatus } = getActionNodes();
-  if (!state.selectedCaseId) {
-    if (actionStatus) actionStatus.textContent = "Select a case first.";
-    return;
-  }
-  openScheduleModal(state.selectedCaseId);
-  if (actionStatus) actionStatus.textContent = "Interview scheduling form opened for the selected case.";
-}
-
 async function applyFilters() {
   const { stageFilter, statusFilter, actionStatus } = getActionNodes();
   state.filters.stage = stageFilter?.value || "";
@@ -641,7 +737,7 @@ async function submitSchedule(event) {
     return;
   }
 
-  status.textContent = "Sending interview email...";
+  status.textContent = "Sending meeting email...";
   try {
     const detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
     const payload = {
@@ -665,10 +761,10 @@ async function submitSchedule(event) {
     syncWorkflowPulse(updated.case.workflow);
     const workflowStatusNode = document.getElementById("formStatus");
     if (workflowStatusNode) {
-      workflowStatusNode.textContent = "Interview scheduled and employee email sent successfully.";
+      workflowStatusNode.textContent = "Meeting scheduled and employee email sent successfully.";
     }
   } catch (error) {
-    status.textContent = `Could not send interview email: ${error.message}`;
+    status.textContent = `Could not send meeting email: ${error.message}`;
   }
 }
 
@@ -700,11 +796,15 @@ async function createIntake(event) {
 async function boot() {
   updateHealth("Live");
   updateInterviewMode();
+  loadUserFromStorage();
+  applyRoleUI();
+  ensureSignedIn();
   wireViewNavigation();
   document.getElementById("refreshDashboard").addEventListener("click", () => loadDashboard());
+  document.getElementById("loginForm")?.addEventListener("submit", handleLogin);
+  document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("intakeForm").addEventListener("submit", createIntake);
   document.getElementById("generateDocumentBtn")?.addEventListener("click", generateDocumentationForSelectedCase);
-  document.getElementById("scheduleInterviewBtn")?.addEventListener("click", scheduleInterviewForSelectedCase);
 
   // Overview focus cards
   document.getElementById("focusGenerateDoc")?.addEventListener("click", async () => {
@@ -713,26 +813,19 @@ async function boot() {
     await generateDocumentationForSelectedCase();
   });
 
-  document.getElementById("focusScheduleInterview")?.addEventListener("click", async () => {
-    await loadDashboard();
-    await scheduleInterviewForSelectedCase();
-  });
-
   document.getElementById("applyFiltersBtn")?.addEventListener("click", applyFilters);
   document.getElementById("clearFiltersBtn")?.addEventListener("click", clearFilters);
-  document.getElementById("scheduleForm")?.addEventListener("submit", submitSchedule);
-  document.getElementById("scheduleModalClose")?.addEventListener("click", closeScheduleModal);
-  document.getElementById("scheduleModalBackdrop")?.addEventListener("click", (event) => {
-    if (event.target.id === "scheduleModalBackdrop") {
-      closeScheduleModal();
-    }
-  });
 
   try {
     await fetchJson("/health");
     updateHealth("Healthy");
     wireWorkflowPulseButtons();
-    await loadDashboard();
+    if (requireLogin()) {
+      await loadDashboard();
+    } else {
+      document.getElementById("casesTableBody").innerHTML =
+        `<tr><td colspan="6" class="empty-state">Please sign in to view case dashboards.</td></tr>`;
+    }
   } catch (error) {
 
     updateHealth("Offline");

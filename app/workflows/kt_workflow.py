@@ -175,6 +175,8 @@ def get_dashboard(
         WorkflowSummaryResponse(
             case_id=case.workflow.case_id,
             employee_name=case.employee.employee_name,
+            employee_email=case.employee.employee_email,
+            manager_email=case.employee.manager_email,
             department=case.employee.department,
             stage=case.workflow.stage,
             status=case.workflow.status,

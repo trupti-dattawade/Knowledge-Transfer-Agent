@@ -31,6 +31,137 @@ html {
   scroll-behavior: smooth;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(16, 35, 63, 0.86);
+  padding: 24px;
+}
+
+.login-panel {
+  width: min(520px, 100%);
+  background: #ffffff;
+  border-radius: 28px;
+  box-shadow: 0 26px 68px rgba(16, 35, 63, 0.22);
+  padding: 32px;
+  position: relative;
+}
+
+.login-panel-header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.login-panel .brand-mark {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #10233f, #1f6feb);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.login-form input,
+.login-form select {
+  width: 100%;
+  border: 1px solid rgba(16, 35, 63, 0.12);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font: inherit;
+  background: #f8fafd;
+}
+
+.login-form .button {
+  margin-top: 8px;
+}
+
+.login-notes {
+  margin-top: 20px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+  font-size: 0.96rem;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-soft);
+}
+
+.topbar-user #currentUserLabel {
+  font-weight: 700;
+}
+
+.topbar-user .button.small {
+  padding: 8px 14px;
+  font-size: 0.86rem;
+}
+
+.employee-summary {
+  margin-top: 18px;
+  padding: 24px;
+  border-radius: 24px;
+  border: 1px solid rgba(16, 35, 63, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.employee-summary-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.employee-summary-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.employee-summary-body p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.role-hr-only,
+.role-manager-only,
+.role-employee-only,
+.role-logged-in-only {
+  display: none !important;
+}
+
+.page-shell.role-hr .role-hr-only,
+.page-shell.role-manager .role-manager-only,
+.page-shell.role-employee .role-employee-only,
+.page-shell.role-hr .role-logged-in-only,
+.page-shell.role-manager .role-logged-in-only,
+.page-shell.role-employee .role-logged-in-only {
+  display: inline-flex !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
