@@ -1,7 +1,9 @@
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel
 
 from app.agents.orchestrator import WorkflowOrchestrator
 from app.models.schemas import (
@@ -22,12 +24,102 @@ router = APIRouter(prefix="/api/v1/kt", tags=["knowledge-transfer"])
 orchestrator = WorkflowOrchestrator()
 
 
+class CurrentUser(BaseModel):
+    role: Literal["hr", "manager", "employee"]
+    email: str
+    name: str
+
+
+def get_current_user(
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+    x_user_name: str | None = Header(default=None, alias="X-User-Name"),
+    role: str | None = Query(default=None),
+    email: str | None = Query(default=None),
+    name: str | None = Query(default=None),
+) -> CurrentUser:
+    resolved_role = (x_user_role or role or "").strip().lower()
+    resolved_email = (x_user_email or email or "").strip().lower()
+    resolved_name = (x_user_name or name or "").strip()
+
+    if resolved_role not in {"hr", "manager", "employee"}:
+        raise HTTPException(status_code=401, detail="Valid user role is required.")
+    if not resolved_email:
+        raise HTTPException(status_code=401, detail="User email is required.")
+    if not resolved_name:
+        resolved_name = resolved_email
+
+    return CurrentUser(role=resolved_role, email=resolved_email, name=resolved_name)
+
+
+def _assert_role(user: CurrentUser, *allowed_roles: Literal["hr", "manager", "employee"]) -> None:
+    if user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="You are not allowed to perform this action.")
+
+
+def _assert_case_access(case_record, user: CurrentUser) -> None:
+    if user.role == "hr":
+        return
+    if user.role == "manager" and str(case_record.employee.manager_email).lower() == user.email:
+        return
+    if user.role == "employee" and str(case_record.employee.employee_email).lower() == user.email:
+        return
+    raise HTTPException(status_code=403, detail="You are not allowed to access this case.")
+
+
+def _assert_submission_access(case_record, user: CurrentUser) -> None:
+    _assert_role(user, "employee")
+    _assert_case_access(case_record, user)
+
+
+def _assert_review_access(case_record, user: CurrentUser) -> None:
+    _assert_role(user, "manager")
+    _assert_case_access(case_record, user)
+
+
+def _assert_review_ready(case_record) -> None:
+    workflow = case_record.workflow
+    if workflow.stage != "under_review" and workflow.status != "awaiting_review":
+        raise HTTPException(status_code=409, detail="This case is not ready for manager review.")
+
+
+def _restrict_case_for_hr(case_record):
+    if case_record.submission:
+        case_record.submission.systems = []
+        case_record.submission.open_tasks = []
+        case_record.submission.risks = []
+        case_record.submission.notes = None
+
+    case_record.employee.employee_email = "restricted@company.local"
+    case_record.employee.manager_name = "Restricted"
+    case_record.employee.manager_email = "restricted@company.local"
+    case_record.employee.hr_contact_name = "Restricted"
+    case_record.employee.hr_contact_email = "restricted@company.local"
+    case_record.employee.reason_for_exit = None
+    case_record.employee.notes = None
+    case_record.notifications = []
+    case_record.interview_session = None
+    case_record.interview = None
+    case_record.audit_log = []
+    return case_record
+
+
+def _present_case_for_user(case_record, user: CurrentUser):
+    if user.role != "hr":
+        return case_record
+    return _restrict_case_for_hr(case_record.model_copy(deep=True))
+
+
 @router.post(
     "/resignations/intake",
     response_model=ResignationIntakeResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def resignation_intake(payload: ResignationIntakeRequest) -> ResignationIntakeResponse:
+def resignation_intake(
+    payload: ResignationIntakeRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> ResignationIntakeResponse:
+    _assert_role(user, "hr")
     case_record = orchestrator.intake_resignation(payload)
     case_record = orchestrator.send_notifications(case_record.workflow.case_id)
     workflow = case_record.workflow
@@ -43,20 +135,30 @@ def resignation_intake(payload: ResignationIntakeRequest) -> ResignationIntakeRe
 
 
 @router.post("/cases/{case_id}/notify", response_model=OperationResponse)
-def send_notifications(case_id: str) -> OperationResponse:
+def send_notifications(case_id: str, user: CurrentUser = Depends(get_current_user)) -> OperationResponse:
+    _assert_role(user, "hr")
     case_record = _safe_execute(lambda: orchestrator.send_notifications(case_id))
     return _operation_response("Notifications sent successfully.", case_record)
 
 
 @router.post("/cases/{case_id}/submission", response_model=OperationResponse)
-def submit_handover(case_id: str, payload: EmployeeSubmissionRequest) -> OperationResponse:
+def submit_handover(
+    case_id: str,
+    payload: EmployeeSubmissionRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    _assert_submission_access(case_record, user)
+    if str(payload.submitted_by).lower() != user.email:
+        raise HTTPException(status_code=403, detail="Employees can submit only their own handover.")
     case_record = _safe_execute(lambda: orchestrator.submit_handover(case_id, payload))
     return _operation_response("Employee handover submission saved.", case_record)
 
 
 @router.get("/cases/{case_id}/submission-template")
-def submission_template(case_id: str) -> dict[str, object]:
+def submission_template(case_id: str, user: CurrentUser = Depends(get_current_user)) -> dict[str, object]:
     case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    _assert_case_access(case_record, user)
     return {
         "case_id": case_id,
         "employee": case_record.employee.employee_name,
@@ -74,14 +176,17 @@ def submission_template(case_id: str) -> dict[str, object]:
 def generate_documentation(
     case_id: str,
     payload: GenerateDocumentationRequest,
+    user: CurrentUser = Depends(get_current_user),
 ) -> OperationResponse:
+    _assert_role(user, "hr")
     case_record = _safe_execute(lambda: orchestrator.generate_documentation(case_id, payload))
     return _operation_response("Documentation generated successfully.", case_record)
 
 
 @router.get("/cases/{case_id}/documentation", response_class=FileResponse)
-def get_documentation(case_id: str) -> FileResponse:
+def get_documentation(case_id: str, user: CurrentUser = Depends(get_current_user)) -> FileResponse:
     case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    _assert_case_access(case_record, user)
     if not case_record.documentation:
         raise HTTPException(status_code=404, detail="Documentation has not been generated yet.")
     path = Path(case_record.documentation.storage_path)
@@ -91,7 +196,16 @@ def get_documentation(case_id: str) -> FileResponse:
 
 
 @router.post("/cases/{case_id}/review", response_model=OperationResponse)
-def review_documentation(case_id: str, payload: ReviewDecisionRequest) -> OperationResponse:
+def review_documentation(
+    case_id: str,
+    payload: ReviewDecisionRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> OperationResponse:
+    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
+    _assert_review_access(case_record, user)
+    _assert_review_ready(case_record)
+    if str(payload.reviewer_email).lower() != user.email:
+        raise HTTPException(status_code=403, detail="Managers can review only with their own identity.")
     case_record = _safe_execute(lambda: orchestrator.review_documentation(case_id, payload))
     return _operation_response("Review decision recorded successfully.", case_record)
 
@@ -150,23 +264,44 @@ def review_documentation_action(
 
 
 @router.post("/cases/{case_id}/complete", response_model=OperationResponse)
-def complete_workflow(case_id: str, payload: CompleteWorkflowRequest) -> OperationResponse:
+def complete_workflow(
+    case_id: str,
+    payload: CompleteWorkflowRequest,
+    user: CurrentUser = Depends(get_current_user),
+) -> OperationResponse:
+    _assert_role(user, "hr")
+    if str(payload.completed_by).lower() != user.email:
+        raise HTTPException(status_code=403, detail="HR can complete workflows only with their own identity.")
     case_record = _safe_execute(lambda: orchestrator.complete_workflow(case_id, payload))
     return _operation_response("Workflow marked as completed.", case_record)
 
 
 @router.get("/cases/{case_id}", response_model=WorkflowDetailResponse)
-def get_case(case_id: str) -> WorkflowDetailResponse:
+def get_case(case_id: str, user: CurrentUser = Depends(get_current_user)) -> WorkflowDetailResponse:
     case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
-    return WorkflowDetailResponse(case=case_record)
+    _assert_case_access(case_record, user)
+    return WorkflowDetailResponse(case=_present_case_for_user(case_record, user))
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
 def get_dashboard(
     stage: str | None = Query(default=None),
     status_value: str | None = Query(default=None, alias="status"),
+    user: CurrentUser = Depends(get_current_user),
 ) -> DashboardResponse:
     cases = orchestrator.list_cases()
+    if user.role == "manager":
+        cases = [
+            case
+            for case in cases
+            if str(case.employee.manager_email).lower() == user.email
+        ]
+    elif user.role == "employee":
+        cases = [
+            case
+            for case in cases
+            if str(case.employee.employee_email).lower() == user.email
+        ]
     if stage:
         cases = [case for case in cases if case.workflow.stage == stage]
     if status_value:

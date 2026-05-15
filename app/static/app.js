@@ -17,12 +17,29 @@ const state = {
 };
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
+  const headers = new Headers(options.headers || {});
+  if (state.user.role && state.user.email) {
+    headers.set("X-User-Role", state.user.role);
+    headers.set("X-User-Email", state.user.email);
+    headers.set("X-User-Name", state.user.name || state.user.email);
+  }
+  const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `Request failed with ${response.status}`);
   }
   return response.json();
+}
+
+function withAuthUrl(url) {
+  const base = window.location.origin;
+  const resolved = new URL(url, base);
+  if (state.user.role && state.user.email) {
+    resolved.searchParams.set("role", state.user.role);
+    resolved.searchParams.set("email", state.user.email);
+    resolved.searchParams.set("name", state.user.name || state.user.email);
+  }
+  return `${resolved.pathname}${resolved.search}`;
 }
 
 function normalizeClassName(value) {
@@ -154,10 +171,16 @@ function ensureSignedIn() {
 
 function handleLogout() {
   state.user = { role: null, email: null, name: null };
+  state.dashboard = null;
+  state.selectedCaseId = null;
   clearUserFromStorage();
   applyRoleUI();
   ensureSignedIn();
-  loadDashboard();
+  document.getElementById("casesTableBody").innerHTML =
+    `<tr><td colspan="6" class="empty-state">Please sign in to view case dashboards.</td></tr>`;
+  document.getElementById("spotlightTitle").textContent = "Select a case";
+  document.getElementById("spotlightBody").innerHTML =
+    "<p>Please sign in to view case details.</p>";
 }
 
 function handleLogin(event) {
@@ -277,6 +300,7 @@ function renderSpotlight(caseDetail) {
   const workflow = caseDetail.case.workflow;
   const employee = caseDetail.case.employee;
   const documentation = caseDetail.case.documentation;
+  const submission = caseDetail.case.submission;
   const selectedCaseBadges = [
     document.getElementById("selectedCaseBadge"),
     document.getElementById("selectedCaseBadgeCases"),
@@ -293,6 +317,44 @@ function renderSpotlight(caseDetail) {
   selectedCaseSubtexts.forEach((node) => {
     if (node) node.textContent = `${employee.employee_name} - ${workflow.stage.replaceAll("_", " ")} - ${workflow.status.replaceAll("_", " ")}`;
   });
+  const roleSpecificContent = state.user.role === "hr"
+    ? `
+        <p><strong>Process:</strong> ${workflow.next_action}</p>
+        <p><strong>Employee stage:</strong> ${workflow.stage}</p>
+        <p><strong>Employee status:</strong> ${workflow.status}</p>
+        <p><strong>Uploaded documents:</strong> ${submission?.documents?.length || 0}</p>
+      `
+    : `
+        <p><strong>Next action:</strong> ${workflow.next_action}</p>
+        <p><strong>Manager:</strong> ${employee.manager_name} - ${employee.manager_email}</p>
+        <p><strong>HR owner:</strong> ${employee.hr_contact_name} - ${employee.hr_contact_email}</p>
+        ${
+          caseDetail.case.interview_schedule
+            ? `<p><strong>Meeting link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.meeting_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.meeting_link}</a></p>`
+            : ""
+        }
+        ${
+          caseDetail.case.interview_schedule?.interview_link
+            ? `<p><strong>Recording link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.interview_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.interview_link}</a></p>`
+            : ""
+        }
+      `;
+
+  const documentContent = documentation
+    ? `
+        <div class="document-summary">
+          <p><strong>Meeting notes PDF:</strong></p>
+          <p><a class="button success" href="${withAuthUrl(`/api/v1/kt/cases/${workflow.case_id}/documentation`)}" target="_blank" rel="noreferrer">Download generated KT PDF</a></p>
+          <p><strong>Document title:</strong> ${documentation.title}</p>
+        </div>
+      `
+    : `
+        <div class="document-summary">
+          <p><strong>Sample meeting notes PDF:</strong></p>
+          <p><a class="button success" href="/static/sample_meeting_notes.pdf" target="_blank" rel="noreferrer">Open sample PDF</a></p>
+        </div>
+      `;
+
   body.innerHTML = `
     <div class="pill ${normalizeClassName(workflow.stage)}">${workflow.stage}</div>
     <div class="spotlight-meta">
@@ -313,37 +375,8 @@ function renderSpotlight(caseDetail) {
         <strong>${new Date(workflow.updated_at).toLocaleString()}</strong>
       </div>
     </div>
-    <p><strong>Next action:</strong> ${workflow.next_action}</p>
-    <p><strong>Manager:</strong> ${employee.manager_name} - ${employee.manager_email}</p>
-    <p><strong>HR owner:</strong> ${employee.hr_contact_name} - ${employee.hr_contact_email}</p>
-    ${
-      caseDetail.case.interview_schedule
-        ? `<p><strong>Meeting link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.meeting_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.meeting_link}</a></p>`
-        : ""
-    }
-    ${
-      caseDetail.case.interview_schedule?.interview_link
-        ? `<p><strong>Recording link:</strong> <a class="case-link" href="${caseDetail.case.interview_schedule.interview_link}" target="_blank" rel="noreferrer">${caseDetail.case.interview_schedule.interview_link}</a></p>`
-        : ""
-    }
-    ${
-      documentation
-        ? `
-          <div class="document-summary">
-            <p><strong>Meeting notes PDF:</strong></p>
-            <p><a class="button success" href="/api/v1/kt/cases/${workflow.case_id}/documentation" target="_blank" rel="noreferrer">Download generated KT PDF</a></p>
-            <p><strong>Distribution:</strong> Shared with the employee, manager, and HR for review.</p>
-            <p><strong>Document title:</strong> ${documentation.title}</p>
-          </div>
-        `
-        : `
-          <div class="document-summary">
-            <p><strong>Sample meeting notes PDF:</strong></p>
-            <p><a class="button success" href="/static/sample_meeting_notes.pdf" target="_blank" rel="noreferrer">Open sample PDF</a></p>
-            <p><strong>Distribution:</strong> Example review copy for employee, manager, and HR.</p>
-          </div>
-        `
-    }
+    ${roleSpecificContent}
+    ${documentContent}
   `;
   // Mark lifecycle pulse nodes as completed/green
   syncWorkflowPulse(workflow, Boolean(documentation));
@@ -360,6 +393,9 @@ function _debugWorkflowPulse(workflow) {
 }
 
 async function loadDashboard() {
+  if (!requireLogin()) {
+    return;
+  }
   const query = new URLSearchParams();
   if (state.filters.stage) query.set("stage", state.filters.stage);
   if (state.filters.status) query.set("status", state.filters.status);
@@ -402,6 +438,9 @@ async function loadDashboard() {
 }
 
 async function loadCaseDetail(caseId, rerenderTable = true) {
+  if (!requireLogin()) {
+    return;
+  }
   state.selectedCaseId = caseId;
   const detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
   renderSpotlight(detail);
@@ -422,10 +461,12 @@ function wireWorkflowPulseButtons() {
     const handler = async () => {
       if (!state.selectedCaseId) return;
       if (phase === "collect") {
-        const completed = await manualCollect();
-        if (completed) {
-          openScheduleModal(state.selectedCaseId);
+        if (state.user.role !== "employee") {
+          const statusNode = document.getElementById("formStatus");
+          if (statusNode) statusNode.textContent = "Only the employee assigned to this case can submit handover details.";
+          return;
         }
+        await manualCollect();
       }
     };
 
@@ -857,7 +898,7 @@ async function loadDocumentPreview(caseId) {
     const detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
     if (detail.case.documentation) {
       preview.innerHTML = `
-        <iframe src="/api/v1/kt/cases/${caseId}/documentation" title="KT Report Preview"></iframe>
+        <iframe src="${withAuthUrl(`/api/v1/kt/cases/${caseId}/documentation`)}" title="KT Report Preview"></iframe>
         <p><strong>Document:</strong> ${detail.case.documentation.title}</p>
         <p><strong>Generated:</strong> ${new Date(detail.case.documentation.generated_at).toLocaleString()}</p>
       `;

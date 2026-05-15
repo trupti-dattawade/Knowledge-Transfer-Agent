@@ -37,7 +37,7 @@ ENV/
 
 # API keys / credentials
 config.py
-config.json
+config.json 
 secrets.json
 credentials.json
 token.json
