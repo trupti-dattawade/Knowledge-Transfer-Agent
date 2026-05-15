@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from app.agents.doc_generator import DocumentationAgent
 from app.agents.email_agent import EmailAgent
 from app.agents.file_agent import FileManagementAgent
-from app.agents.interview_agent import InterviewAgent
 from app.agents.trigger_agent import TriggerAgent
 from app.config import settings
 from app.models.constants import STAGE_TO_STATUS
@@ -15,13 +14,7 @@ from app.models.schemas import (
     CompleteWorkflowRequest,
     EmployeeSubmissionRequest,
     GenerateDocumentationRequest,
-    InterviewCaptureRequest,
-    InterviewSession,
-    InterviewSchedule,
-    InterviewScheduleRequest,
     KTCaseRecord,
-    LiveInterviewResponseRequest,
-    LiveInterviewStartRequest,
     ReviewDecisionRequest,
     ReviewRecord,
     WorkflowAuditEntry,
@@ -39,7 +32,6 @@ class WorkflowOrchestrator:
         trigger_agent: TriggerAgent | None = None,
         email_agent: EmailAgent | None = None,
         file_agent: FileManagementAgent | None = None,
-        interview_agent: InterviewAgent | None = None,
         documentation_agent: DocumentationAgent | None = None,
         calendar_service: CalendarService | None = None,
     ) -> None:
@@ -47,7 +39,6 @@ class WorkflowOrchestrator:
         self.trigger_agent = trigger_agent or TriggerAgent(case_store=self.case_store)
         self.email_agent = email_agent or EmailAgent()
         self.file_agent = file_agent or FileManagementAgent()
-        self.interview_agent = interview_agent or InterviewAgent()
         self.documentation_agent = documentation_agent or DocumentationAgent()
         self.calendar_service = calendar_service or CalendarService()
 
@@ -115,12 +106,6 @@ class WorkflowOrchestrator:
                 "resignation_registered",
             ),
             (
-                str(case_record.employee.hr_contact_email),
-                "Resignation intake recorded",
-                f"KT case {case_id} has been created and awaits employee submission.",
-                "resignation_registered",
-            ),
-            (
                 str(case_record.employee.manager_email),
                 "Upcoming knowledge transfer review",
                 (
@@ -141,7 +126,7 @@ class WorkflowOrchestrator:
             audit_entry=self._audit(
                 "notifications_sent",
                 "System",
-                "Notification emails sent to HR, employee, and manager.",
+                "Notification emails sent to employee and manager.",
             ),
         )
         return updated
@@ -151,7 +136,7 @@ class WorkflowOrchestrator:
         updated = self._update_case(
             case_record,
             stage="submission_received",
-            next_action="Schedule and conduct the AI KT interview.",
+            next_action="Generate KT report from submitted materials and meeting recording.",
             submission=payload,
             audit_entry=self._audit(
                 "submission_received",
@@ -161,172 +146,6 @@ class WorkflowOrchestrator:
         )
         return updated
 
-    def schedule_interview(self, case_id: str, payload: InterviewScheduleRequest) -> KTCaseRecord:
-        case_record = self.case_store.get_case(case_id)
-        meeting_link = self.calendar_service.create_invite_link(case_record, payload)
-        schedule = InterviewSchedule(
-            interview_datetime=payload.interview_datetime,
-            duration_minutes=payload.duration_minutes,
-            meeting_link=meeting_link,
-            # meeting-only: interview_link not used
-            interview_link=None,
-            scheduled_by=payload.scheduled_by,
-        )
-        # Meeting-only behavior: do not email HR; use meeting_link only.
-        sent = self.email_agent.send_case_notifications(
-
-            case_record,
-            [
-
-                (
-                    str(case_record.employee.employee_email),
-                    f"Knowledge Transfer (KT) Interview Scheduled - {case_record.employee.employee_name}",
-                    (
-                        f"Hello {case_record.employee.employee_name},\n\n"
-                        "This is scheduled for "
-                        f"{payload.interview_datetime.isoformat()} "
-                        "Please review the details below and join on time.\n\n"
-                        "Your Knowledge Transfer (KT) interview has been scheduled for "
-                        f"{payload.interview_datetime.isoformat()} "
-                        f"for {payload.duration_minutes} minutes.\n\n"
-                        f"Meeting link: {meeting_link}\n"
-                        f"Interview link: {interview_link_text}\n\n"
-                        "Agenda (recommended topics):\n"
-                        "- Your responsibilities and current ownership\n"
-                        "- Key workflows and day-to-day processes\n"
-                        "- Systems/tools you use and how to operate them\n"
-                        "- Known risks, dependencies, and operational considerations\n"
-                        "- Handover advice to ensure continuity\n\n"
-                        "Thank you,\n"
-                        "Knowledge Transfer Team"
-                    ),
-                    "interview_scheduled",
-                ),
-                (
-                    str(case_record.employee.manager_email),
-                    f"KT interview scheduled for {case_record.employee.employee_name}",
-                    (
-                        f"The KT interview for {case_record.employee.employee_name} has been scheduled.\n\n"
-                        f"Interview time: {payload.interview_datetime.isoformat()}\n"
-                        f"Meeting link: {meeting_link}\n"
-                        f"Interview link: {interview_link_text}"
-                    ),
-                    "interview_scheduled",
-                ),
-                (
-                    # meeting-only: HR not emailed at this stage
-                    # str(case_record.employee.hr_contact_email),
-                    # f"KT interview scheduled for {case_record.employee.employee_name}",
-
-                    (
-                        f"The KT interview for {case_record.employee.employee_name} has been scheduled.\n\n"
-                        f"Interview time: {payload.interview_datetime.isoformat()}\n"
-                        f"Meeting link: {meeting_link}\n"
-                        f"Interview link: {interview_link_text}"
-                    ),
-                    "interview_scheduled",
-                ),
-            ],
-        )
-        updated = self._update_case(
-            case_record,
-            stage="interview_scheduled",
-            next_action="Capture structured knowledge from the KT interview.",
-            interview_schedule=schedule,
-            notifications=case_record.notifications + sent,
-            audit_entry=self._audit(
-                "interview_scheduled",
-                f"Scheduler:{payload.scheduled_by}",
-                "Interview scheduled and invite generated.",
-            ),
-        )
-        return updated
-
-    def capture_interview(self, case_id: str, payload: InterviewCaptureRequest) -> KTCaseRecord:
-        case_record = self.case_store.get_case(case_id)
-        interview_record = self.interview_agent.build_record(payload)
-        updated = self._update_case(
-            case_record,
-            stage="interview_completed",
-            next_action="Generate the KT review PDF from submitted material and interview knowledge.",
-            interview=interview_record,
-            audit_entry=self._audit(
-                "interview_completed",
-                f"Interviewer:{payload.interviewer}",
-                "Interview completed and structured knowledge captured.",
-            ),
-        )
-        return self._generate_documentation_and_notify(updated, payload.interviewer)
-
-    def start_live_interview(
-        self,
-        case_id: str,
-        payload: LiveInterviewStartRequest,
-    ) -> KTCaseRecord:
-        case_record = self.case_store.get_case(case_id)
-        session = self.interview_agent.start_live_session(payload.interviewer_name)
-        updated = self._update_case(
-            case_record,
-            stage=case_record.workflow.stage,
-            next_action="Employee should continue the live KT interview conversation.",
-            interview_session=session,
-            audit_entry=self._audit(
-                "live_interview_started",
-                f"Interviewer:{payload.interviewer_name}",
-                "Live conversational KT interview started.",
-            ),
-        )
-        return updated
-
-    def respond_live_interview(
-        self,
-        case_id: str,
-        payload: LiveInterviewResponseRequest,
-    ) -> KTCaseRecord:
-        case_record = self.case_store.get_case(case_id)
-        if not case_record.interview_session:
-            raise KeyError(f"Interview session for case {case_id} not found")
-
-        session = self.interview_agent.continue_live_session(case_record.interview_session, payload.answer)
-        updates: dict[str, object] = {"interview_session": session}
-        stage = case_record.workflow.stage
-        next_action = "Continue responding to the live KT interview."
-        audit_details = "Employee provided a live interview response."
-
-        if session.status == "completed":
-            record = self.interview_agent.session_to_record("AI Interview Agent", session)
-            completed_case = self._update_case(
-                case_record,
-                stage="interview_completed",
-                next_action="Generate the KT review PDF from the completed live interview.",
-                audit_entry=self._audit(
-                    "live_interview_completed",
-                    f"Employee:{case_record.employee.employee_email}",
-                    "Live interview completed and structured knowledge captured.",
-                ),
-                interview_session=session,
-                interview=record,
-            )
-            return self._generate_documentation_and_notify(completed_case, "AI Meeting Agent")
-
-        updated = self._update_case(
-            case_record,
-            stage=stage,
-            next_action=next_action,
-            audit_entry=self._audit(
-                "live_interview_progressed",
-                f"Employee:{case_record.employee.employee_email}",
-                audit_details,
-            ),
-            **updates,
-        )
-        return updated
-
-    def get_live_interview_session(self, case_id: str) -> InterviewSession:
-        case_record = self.case_store.get_case(case_id)
-        if not case_record.interview_session:
-            raise KeyError(f"Interview session for case {case_id} not found")
-        return case_record.interview_session
 
     def generate_documentation(
         self,
@@ -369,7 +188,7 @@ class WorkflowOrchestrator:
                     "subject": "KT meeting notes PDF ready",
                     "body": (
                         f"Hello {case_record.employee.employee_name},\n\n"
-                        "Your Knowledge Transfer meeting notes PDF has been generated successfully.\n"
+                        "Your Knowledge Transfer meeting notes PDF has been generated successfully from the meeting recording.\n"
                         f"Document title: {documentation.title}\n"
                         f"Download link: {documentation.share_link}\n\n"
                         "The PDF is attached to this email and has also been shared with your manager for review.\n"
@@ -442,12 +261,12 @@ class WorkflowOrchestrator:
                 [
                     {
                         "recipient": str(case_record.employee.employee_email),
-                        "subject": "KT interview report rejected",
+                        "subject": "KT report rejected",
                         "body": (
                             f"Hello {case_record.employee.employee_name},\n\n"
                             "The manager reviewed the KT PDF and rejected the report.\n"
                             f"Comments: {payload.comments}\n\n"
-                            "Please attend the interview/report step again so the KT report can be recreated and sent for review."
+                            "Please resubmit the knowledge transfer materials so the KT report can be recreated and sent for review."
                         ),
                         "category": "changes_requested",
                     },
@@ -464,8 +283,8 @@ class WorkflowOrchestrator:
             )
             updated = self._update_case(
                 case_record,
-                stage="interview_completed",
-                next_action="Manager rejected the report. Return to phase 4 interview and recreate the interview report before generating a new PDF.",
+                stage="submission_received",
+                next_action="Manager rejected the report. Resubmit KT materials for report regeneration.",
                 documentation=None,
                 review=review_record,
                 notifications=case_record.notifications + sent,
@@ -546,12 +365,6 @@ class WorkflowOrchestrator:
                     str(case_record.employee.employee_email),
                     "KT workflow completed",
                     f"Your knowledge transfer workflow for case {case_id} is complete.",
-                    "workflow_completed",
-                ),
-                (
-                    str(case_record.employee.hr_contact_email),
-                    "KT workflow completed",
-                    f"Case {case_id} has been completed successfully.",
                     "workflow_completed",
                 ),
                 (
@@ -649,10 +462,13 @@ class WorkflowOrchestrator:
             raise ValueError("Review token is invalid.")
         if datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
             raise ValueError("Review token has expired.")
+        decision = str(payload["decision"])
+        if decision not in ("approved", "changes_requested"):
+            raise ValueError("Review token has invalid decision.")
         return ReviewDecisionRequest(
             reviewer_email=str(payload["reviewer_email"]),
             reviewer_name=str(payload["reviewer_name"]),
-            decision=str(payload["decision"]),
+            decision=decision,  # type: ignore
             comments=str(payload["comments"]),
         )
 
@@ -695,7 +511,9 @@ class WorkflowOrchestrator:
             envelope = json.loads(
                 base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
             )
-            payload_bytes = base64.urlsafe_b64decode(str(envelope["payload"]).encode("utf-8"))
+            payload_bytes = base64.urlsafe_b64decode(
+                str(envelope["payload"]).encode("utf-8")
+            )
             expected_signature = hmac.new(
                 settings.review_link_secret.encode("utf-8"),
                 payload_bytes,
@@ -753,3 +571,4 @@ class WorkflowOrchestrator:
           </body>
         </html>
         """
+

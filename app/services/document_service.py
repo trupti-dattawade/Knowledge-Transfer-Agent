@@ -229,7 +229,7 @@ class DocumentationComposer:
         )
 
         if interview and interview.qna:
-            story.append(Paragraph("Interview Highlights", section_style))
+            story.append(Paragraph("Meeting Recording Notes", section_style))
             story.append(Spacer(1, 2))
             for item in interview.qna:
                 story.append(Paragraph(item.question, small_label_style))

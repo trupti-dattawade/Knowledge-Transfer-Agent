@@ -9,11 +9,6 @@ from app.models.schemas import (
     DashboardResponse,
     EmployeeSubmissionRequest,
     GenerateDocumentationRequest,
-    InterviewCaptureRequest,
-    InterviewScheduleRequest,
-    LiveInterviewResponseRequest,
-    LiveInterviewStartRequest,
-    LiveInterviewStateResponse,
     OperationResponse,
     ResignationIntakeRequest,
     ResignationIntakeResponse,
@@ -73,50 +68,6 @@ def submission_template(case_id: str) -> dict[str, object]:
             "notes",
         ],
     }
-
-
-@router.post("/cases/{case_id}/interview/schedule", response_model=OperationResponse)
-def schedule_interview(case_id: str, payload: InterviewScheduleRequest) -> OperationResponse:
-    case_record = _safe_execute(lambda: orchestrator.schedule_interview(case_id, payload))
-    return _operation_response("Interview scheduled successfully.", case_record)
-
-
-@router.post("/cases/{case_id}/interview/capture", response_model=OperationResponse)
-def capture_interview(case_id: str, payload: InterviewCaptureRequest) -> OperationResponse:
-    case_record = _safe_execute(lambda: orchestrator.capture_interview(case_id, payload))
-    return _operation_response("Interview knowledge captured successfully.", case_record)
-
-
-@router.post("/cases/{case_id}/interview/live/start", response_model=LiveInterviewStateResponse)
-def start_live_interview(
-    case_id: str,
-    payload: LiveInterviewStartRequest,
-) -> LiveInterviewStateResponse:
-    case_record = _safe_execute(lambda: orchestrator.start_live_interview(case_id, payload))
-    session = case_record.interview_session
-    return _live_interview_response(case_record.workflow.case_id, case_record.workflow.next_action, session)
-
-
-@router.post("/cases/{case_id}/interview/live/respond", response_model=LiveInterviewStateResponse)
-def respond_live_interview(
-    case_id: str,
-    payload: LiveInterviewResponseRequest,
-) -> LiveInterviewStateResponse:
-    case_record = _safe_execute(lambda: orchestrator.respond_live_interview(case_id, payload))
-    session = case_record.interview_session
-    return _live_interview_response(case_record.workflow.case_id, case_record.workflow.next_action, session)
-
-
-@router.get("/cases/{case_id}/interview/live", response_model=LiveInterviewStateResponse)
-def get_live_interview(case_id: str) -> LiveInterviewStateResponse:
-    case_record = _safe_execute(lambda: orchestrator.get_case(case_id))
-    if not case_record.interview_session:
-        raise HTTPException(status_code=404, detail="Live interview session has not started yet.")
-    return _live_interview_response(
-        case_record.workflow.case_id,
-        case_record.workflow.next_action,
-        case_record.interview_session,
-    )
 
 
 @router.post("/cases/{case_id}/documentation/generate", response_model=OperationResponse)
@@ -252,17 +203,6 @@ def _operation_response(message: str, case_record) -> OperationResponse:
         stage=workflow.stage,
         status=workflow.status,
         next_action=workflow.next_action,
-    )
-
-
-def _live_interview_response(case_id: str, next_action: str, session) -> LiveInterviewStateResponse:
-    return LiveInterviewStateResponse(
-        case_id=case_id,
-        session_id=session.session_id,
-        status=session.status,
-        pending_question=session.pending_question,
-        transcript=session.transcript,
-        next_action=next_action,
     )
 
 
