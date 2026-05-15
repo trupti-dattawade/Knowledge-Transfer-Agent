@@ -295,6 +295,10 @@
                 <div class="action-grid role-hr-only">
                   <button class="button success" id="generateDocumentBtn" type="button">Generate Review PDF</button>
                 </div>
+                <div class="action-grid role-manager-only">
+                  <button class="button primary" id="approveReportBtn" type="button">Approve Report</button>
+                  <button class="button danger" id="rejectReportBtn" type="button">Request Changes</button>
+                </div>
                 <p id="actionStatus" class="form-status">Run document generation for the selected case.</p>
               </div>
             </div>
@@ -441,6 +445,47 @@
         </section>
       </section>
     </main>
+  </div>
+
+  <div class="modal-backdrop is-hidden" id="approvalModalBackdrop" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="approvalModalTitle">
+      <div class="panel-header modal-header">
+        <div>
+          <span class="panel-label">Report Approval</span>
+          <h2 id="approvalModalTitle">Review KT Report</h2>
+        </div>
+        <button class="button subtle modal-close" id="approvalModalClose" type="button" aria-label="Close popup">Close</button>
+      </div>
+
+      <div class="approval-content">
+        <div class="approval-preview">
+          <h3>Document Preview</h3>
+          <div id="approvalDocumentPreview" class="document-preview">
+            <p>Loading document preview...</p>
+          </div>
+        </div>
+        <form id="approvalForm" class="intake-form">
+          <div class="field-grid">
+            <label>
+              <span>Decision</span>
+              <select id="approvalDecision" name="decision" required>
+                <option value="">Select decision</option>
+                <option value="approved">Approve Report</option>
+                <option value="changes_requested">Request Changes</option>
+              </select>
+            </label>
+            <label>
+              <span>Comments (optional)</span>
+              <textarea id="approvalComments" name="comments" rows="4" placeholder="Add any comments or feedback..."></textarea>
+            </label>
+          </div>
+          <div class="form-footer">
+            <button class="button primary" type="submit">Submit Decision</button>
+            <p id="approvalFormStatus" class="form-status">Review the document and submit your decision.</p>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

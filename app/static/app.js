@@ -3,6 +3,7 @@ const state = {
   selectedCaseId: null,
   interviewSession: null,
   scheduleCaseId: null,
+  approvalCaseId: null,
   currentView: "overview",
   filters: {
     stage: "",
@@ -792,6 +793,131 @@ async function createIntake(event) {
   }
 }
 
+function getApprovalNodes() {
+  return {
+    backdrop: document.getElementById("approvalModalBackdrop"),
+    form: document.getElementById("approvalForm"),
+    status: document.getElementById("approvalFormStatus"),
+    decision: document.getElementById("approvalDecision"),
+    comments: document.getElementById("approvalComments"),
+    preview: document.getElementById("approvalDocumentPreview"),
+  };
+}
+
+function openApprovalModal(caseId) {
+  const nodes = getApprovalNodes();
+  if (!nodes.backdrop || !nodes.form || !nodes.status || !nodes.decision || !nodes.comments || !nodes.preview) {
+    return;
+  }
+
+  state.approvalCaseId = caseId;
+  nodes.backdrop.classList.remove("is-hidden");
+  nodes.backdrop.setAttribute("aria-hidden", "false");
+  nodes.status.textContent = "Review the document and submit your decision.";
+  nodes.form.reset();
+
+  // Load document preview
+  loadDocumentPreview(caseId);
+  nodes.decision.focus();
+}
+
+function closeApprovalModal() {
+  const { backdrop, status, form } = getApprovalNodes();
+  if (!backdrop || !status || !form) return;
+  state.approvalCaseId = null;
+  backdrop.classList.add("is-hidden");
+  backdrop.setAttribute("aria-hidden", "true");
+  status.textContent = "Review the document and submit your decision.";
+  form.reset();
+}
+
+async function loadDocumentPreview(caseId) {
+  const { preview } = getApprovalNodes();
+  if (!preview) return;
+
+  try {
+    const detail = await fetchJson(`/api/v1/kt/cases/${caseId}`);
+    if (detail.case.documentation) {
+      preview.innerHTML = `
+        <iframe src="/api/v1/kt/cases/${caseId}/documentation" title="KT Report Preview"></iframe>
+        <p><strong>Document:</strong> ${detail.case.documentation.title}</p>
+        <p><strong>Generated:</strong> ${new Date(detail.case.documentation.generated_at).toLocaleString()}</p>
+      `;
+    } else {
+      preview.innerHTML = `<p>No documentation available for review.</p>`;
+    }
+  } catch (error) {
+    preview.innerHTML = `<p>Could not load document preview: ${error.message}</p>`;
+  }
+}
+
+async function submitApproval(event) {
+  event.preventDefault();
+  const { status, decision, comments } = getApprovalNodes();
+  const caseId = state.approvalCaseId;
+
+  if (!caseId) {
+    status.textContent = "Select a case first.";
+    return;
+  }
+
+  const decisionValue = decision.value;
+  const commentsValue = comments.value.trim();
+
+  if (!decisionValue) {
+    status.textContent = "Please select a decision.";
+    return;
+  }
+
+  status.textContent = "Submitting approval decision...";
+  try {
+    const payload = {
+      reviewer_email: state.user.email,
+      reviewer_name: state.user.name,
+      decision: decisionValue,
+      comments: commentsValue,
+    };
+
+    await fetchJson(`/api/v1/kt/cases/${caseId}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    closeApprovalModal();
+    await loadDashboard();
+    await loadCaseDetail(caseId, false);
+    const workflowStatusNode = document.getElementById("actionStatus");
+    if (workflowStatusNode) {
+      workflowStatusNode.textContent = `Report ${decisionValue === 'approved' ? 'approved' : 'changes requested'} successfully.`;
+    }
+  } catch (error) {
+    status.textContent = `Could not submit decision: ${error.message}`;
+  }
+}
+
+async function approveReportForSelectedCase() {
+  const { actionStatus } = getActionNodes();
+  if (!state.selectedCaseId) {
+    if (actionStatus) actionStatus.textContent = "Select a case first.";
+    return;
+  }
+  openApprovalModal(state.selectedCaseId);
+  if (actionStatus) actionStatus.textContent = "Approval modal opened for the selected case.";
+}
+
+async function rejectReportForSelectedCase() {
+  const { actionStatus } = getActionNodes();
+  if (!state.selectedCaseId) {
+    if (actionStatus) actionStatus.textContent = "Select a case first.";
+    return;
+  }
+  openApprovalModal(state.selectedCaseId);
+  // Pre-select reject option
+  const { decision } = getApprovalNodes();
+  if (decision) decision.value = "changes_requested";
+  if (actionStatus) actionStatus.textContent = "Changes request modal opened for the selected case.";
+}
 
 async function boot() {
   updateHealth("Live");
@@ -805,6 +931,8 @@ async function boot() {
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("intakeForm").addEventListener("submit", createIntake);
   document.getElementById("generateDocumentBtn")?.addEventListener("click", generateDocumentationForSelectedCase);
+  document.getElementById("approveReportBtn")?.addEventListener("click", approveReportForSelectedCase);
+  document.getElementById("rejectReportBtn")?.addEventListener("click", rejectReportForSelectedCase);
 
   // Overview focus cards
   document.getElementById("focusGenerateDoc")?.addEventListener("click", async () => {
@@ -815,6 +943,13 @@ async function boot() {
 
   document.getElementById("applyFiltersBtn")?.addEventListener("click", applyFilters);
   document.getElementById("clearFiltersBtn")?.addEventListener("click", clearFilters);
+  document.getElementById("approvalForm")?.addEventListener("submit", submitApproval);
+  document.getElementById("approvalModalClose")?.addEventListener("click", closeApprovalModal);
+  document.getElementById("approvalModalBackdrop")?.addEventListener("click", (event) => {
+    if (event.target.id === "approvalModalBackdrop") {
+      closeApprovalModal();
+    }
+  });
 
   try {
     await fetchJson("/health");
