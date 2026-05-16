@@ -34,11 +34,19 @@ def get_current_user(
     x_user_role: str | None = Header(default=None, alias="X-User-Role"),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     x_user_name: str | None = Header(default=None, alias="X-User-Name"),
-    role: str | None = Query(default=None),
-    email: str | None = Query(default=None),
-    name: str | None = Query(default=None),
+    # Query-param based impersonation is intentionally disabled.
+    # Identity should come from X-User-* headers only.
+    role: str | None = Query(default=None, include_in_schema=False),
+    email: str | None = Query(default=None, include_in_schema=False),
+    name: str | None = Query(default=None, include_in_schema=False),
 ) -> CurrentUser:
-    resolved_role = (x_user_role or role or "").strip().lower()
+    if role or email or name:
+        raise HTTPException(
+            status_code=401,
+            detail="Query parameters for identity are not allowed; use X-User-* headers.",
+        )
+
+    resolved_role = (x_user_role or "").strip().lower()
     resolved_email = (x_user_email or email or "").strip().lower()
     resolved_name = (x_user_name or name or "").strip()
 
@@ -50,6 +58,26 @@ def get_current_user(
         resolved_name = resolved_email
 
     return CurrentUser(role=resolved_role, email=resolved_email, name=resolved_name)
+
+
+def _enforce_employee_visibility(case_record, user: CurrentUser):
+    """Return a case object that is safe to send to the employee."""
+    if user.role != "employee":
+        return case_record
+    # Employee must only see their own case; sensitive HR/manager fields are removed.
+    safe = case_record.model_copy(deep=True)
+    safe.employee.employee_email = "restricted@company.local"
+    safe.employee.manager_name = "Restricted"
+    safe.employee.manager_email = "restricted@company.local"
+    safe.employee.hr_contact_name = "Restricted"
+    safe.employee.hr_contact_email = "restricted@company.local"
+    safe.employee.reason_for_exit = None
+    safe.employee.notes = None
+    safe.notifications = []
+    safe.interview_session = None
+    safe.interview = None
+    safe.audit_log = []
+    return safe
 
 
 def _assert_role(user: CurrentUser, *allowed_roles: Literal["hr", "manager", "employee"]) -> None:
@@ -105,9 +133,11 @@ def _restrict_case_for_hr(case_record):
 
 
 def _present_case_for_user(case_record, user: CurrentUser):
-    if user.role != "hr":
-        return case_record
-    return _restrict_case_for_hr(case_record.model_copy(deep=True))
+    if user.role == "hr":
+        return _restrict_case_for_hr(case_record.model_copy(deep=True))
+    if user.role == "employee":
+        return _enforce_employee_visibility(case_record.model_copy(deep=True), user)
+    return case_record
 
 
 @router.post(
